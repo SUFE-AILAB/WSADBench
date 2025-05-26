@@ -1,0 +1,18 @@
+pyod==1.0.1
+rtdl==0.0.14.dev5  # supports PyTorch 2.x
+scikit-learn
+# torch
+keras
+# tensorflow
+delu
+lightgbm
+xgboost
+catboost # pip install catboost --prefer-binary
+copulas
+combo
+barbar
+fsspec
+tqdm
+wget
+xlrd
+wandb
