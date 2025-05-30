@@ -181,3 +181,43 @@ class RoSAS:
         scores = predict_rosas(self.model, X_test, self.device)
 
         return scores
+
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+
+        Returns:
+            dict: 包含模型参数量的字典
+        """
+        if self.model is None:
+            # 如果模型未初始化，创建临时模型实例来计算参数
+            temp_input_dim = 100  # 默认输入维度用于估算
+
+            try:
+                # 保存当前状态
+                current_model = self.model
+                current_criterion = self.criterion
+                current_optimizer = self.optimizer
+                current_scheduler = self.scheduler
+
+                # 临时初始化模型
+                self._init_model(temp_input_dim)
+
+                # 计算参数
+                params = {"model": sum(p.numel() for p in self.model.parameters())}
+                params["total"] = params["model"]
+
+                # 恢复状态
+                self.model = current_model
+                self.criterion = current_criterion
+                self.optimizer = current_optimizer
+                self.scheduler = current_scheduler
+
+                return params
+
+            except Exception as e:
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            params = {"model": sum(p.numel() for p in self.model.parameters())}
+            params["total"] = params["model"]
+            return params

@@ -251,3 +251,79 @@ class CRGAN:
         # 简单的基于分位数的阈值
         threshold_value = np.percentile(scores, threshold * 100)
         return (scores > threshold_value).astype(int)
+
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+
+        Returns:
+            dict: 包含各组件参数量的字典
+        """
+        if not self.is_fitted:
+            # 如果模型未训练，创建临时模型实例来计算参数
+            try:
+                # 保存当前状态
+                current_generator = self.generator
+                current_encoder = self.encoder
+                current_discriminatorxz = self.discriminatorxz
+                current_discriminatorxx = self.discriminatorxx
+                current_discriminator = self.discriminator
+
+                # 临时初始化模型
+                self._initialize_models()
+
+                # 计算参数
+                params = self._count_parameters()
+
+                # 恢复状态
+                self.generator = current_generator
+                self.encoder = current_encoder
+                self.discriminatorxz = current_discriminatorxz
+                self.discriminatorxx = current_discriminatorxx
+                self.discriminator = current_discriminator
+
+                return params
+
+            except Exception as e:
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            return self._count_parameters()
+
+    def _count_parameters(self) -> dict:
+        """内部方法：计算各组件的参数量"""
+        params = {}
+
+        if self.generator is not None:
+            params["generator"] = sum(p.numel() for p in self.generator.parameters())
+        else:
+            params["generator"] = 0
+
+        if self.encoder is not None:
+            params["encoder"] = sum(p.numel() for p in self.encoder.parameters())
+        else:
+            params["encoder"] = 0
+
+        if self.discriminatorxz is not None:
+            params["discriminatorxz"] = sum(p.numel() for p in self.discriminatorxz.parameters())
+        else:
+            params["discriminatorxz"] = 0
+
+        if self.discriminatorxx is not None:
+            params["discriminatorxx"] = sum(p.numel() for p in self.discriminatorxx.parameters())
+        else:
+            params["discriminatorxx"] = 0
+
+        if self.discriminator is not None:
+            params["discriminator"] = sum(p.numel() for p in self.discriminator.parameters())
+        else:
+            params["discriminator"] = 0
+
+        params["total"] = (
+            params["generator"]
+            + params["encoder"]
+            + params["discriminatorxz"]
+            + params["discriminatorxx"]
+            + params["discriminator"]
+        )
+
+        return params

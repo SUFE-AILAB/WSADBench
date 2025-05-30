@@ -212,7 +212,22 @@ class GeneralClassicalRunner:
             try:
                 # 创建一个临时模型实例来计算参数
                 temp_model = self.create_model(model_name, seed=1)
-                if hasattr(temp_model, "get_params"):
+                
+                # 优先使用模型的parameter_count方法
+                if hasattr(temp_model, "parameter_count"):
+                    try:
+                        param_stats = temp_model.parameter_count()
+                        if isinstance(param_stats, dict) and "total" in param_stats:
+                            stats["parameter_count"] = param_stats["total"]
+                            stats["parameter_stats"] = param_stats
+                        else:
+                            logger.warning(f"{model_name} 的 parameter_count 方法返回格式不符合预期: {param_stats}")
+                            stats["parameter_count"] = "Unknown"
+                    except Exception as e:
+                        logger.warning(f"调用 {model_name} 的 parameter_count 方法失败: {e}")
+                        # 继续使用下面的备用方法
+                        stats["parameter_count"] = "Unknown"
+                elif hasattr(temp_model, "get_params"):
                     # sklearn风格的模型
                     model_params = temp_model.get_params()
                     stats["sklearn_params"] = model_params
@@ -231,7 +246,7 @@ class GeneralClassicalRunner:
 
             except Exception as e:
                 logger.warning(f"无法计算 {model_name} 的参数大小: {e}")
-                stats["parameter_count"] = "Error"
+                stats["parameter_count"] = "Unknown"
                 stats["error"] = str(e)
 
             # 保存统计信息

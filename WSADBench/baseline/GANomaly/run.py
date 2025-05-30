@@ -74,3 +74,53 @@ class GANomaly():
             score = torch.sum(score, dim=1).cpu().detach().numpy()
 
         return score
+
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+        
+        Returns:
+            dict: 包含各组件参数量的字典
+        """
+        if not hasattr(self, 'net_generator') or self.net_generator is None:
+            # 如果模型未训练，创建临时模型实例来计算参数
+            try:
+                # 创建临时输入尺寸用于初始化模型
+                temp_input_size = 100  # 默认输入尺寸
+                temp_hidden_size = temp_input_size // 4
+                
+                # 保存当前状态
+                current_generator = getattr(self, 'net_generator', None)
+                current_discriminator = getattr(self, 'net_discriminator', None)
+                
+                # 临时初始化模型
+                temp_generator = generator(input_size=temp_input_size, hidden_size=temp_hidden_size, act_fun=self.act_fun)
+                temp_discriminator = discriminator(input_size=temp_input_size, act_fun=self.act_fun)
+                
+                # 计算参数
+                params = {
+                    "generator": sum(p.numel() for p in temp_generator.parameters()),
+                    "discriminator": sum(p.numel() for p in temp_discriminator.parameters())
+                }
+                params["total"] = params["generator"] + params["discriminator"]
+                
+                # 清理临时模型
+                del temp_generator, temp_discriminator
+                
+                # 恢复状态
+                if current_generator is not None:
+                    self.net_generator = current_generator
+                if current_discriminator is not None:
+                    self.net_discriminator = current_discriminator
+                
+                return params
+                
+            except Exception as e:
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            params = {
+                "generator": sum(p.numel() for p in self.net_generator.parameters()),
+                "discriminator": sum(p.numel() for p in self.net_discriminator.parameters())
+            }
+            params["total"] = params["generator"] + params["discriminator"]
+            return params

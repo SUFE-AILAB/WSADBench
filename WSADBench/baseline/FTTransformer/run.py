@@ -164,5 +164,63 @@ class FTTransformer():
         score, _ = self.evaluate(X=X, y=None)
         return score
 
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+        
+        Returns:
+            dict: 包含模型参数量的字典
+        """
+        if not hasattr(self, 'model') or self.model is None:
+            # 如果模型未训练，创建临时模型实例来计算参数
+            try:
+                # 创建临时输入维度用于初始化模型
+                temp_input_dim = 100  # 默认输入维度
+                d_out = 1  # 二分类输出
+                
+                # 保存当前状态
+                current_model = getattr(self, 'model', None)
+                
+                # 临时初始化模型
+                if self.model_name == 'ResNet':
+                    temp_model = rtdl.ResNet.make_baseline(
+                        d_in=temp_input_dim,
+                        d_main=128,
+                        d_hidden=256,
+                        dropout_first=0.2,
+                        dropout_second=0.0,
+                        n_blocks=2,
+                        d_out=d_out,
+                    )
+                elif self.model_name == 'FTTransformer':
+                    temp_model = rtdl.FTTransformer.make_default(
+                        n_num_features=temp_input_dim,
+                        cat_cardinalities=None,
+                        last_layer_query_idx=[-1],
+                        d_out=d_out,
+                    )
+                else:
+                    return {"error": f"Unknown model name: {self.model_name}"}
+                
+                # 计算参数
+                params = {"model": sum(p.numel() for p in temp_model.parameters())}
+                params["total"] = params["model"]
+                
+                # 清理临时模型
+                del temp_model
+                
+                # 恢复状态
+                if current_model is not None:
+                    self.model = current_model
+                
+                return params
+                
+            except Exception as e:
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            params = {"model": sum(p.numel() for p in self.model.parameters())}
+            params["total"] = params["model"]
+            return params
+
 
 

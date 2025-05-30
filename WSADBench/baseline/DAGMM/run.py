@@ -116,6 +116,42 @@ class DAGMM():
         score = eval(self.model.model, data, self.device, self.args.n_gmm, self.args.batch_size)
         return score
 
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+        
+        Returns:
+            dict: 包含模型参数量的字典
+        """
+        if not hasattr(self, 'model') or self.model is None:
+            # 如果模型未训练，创建临时模型实例来计算参数
+            try:
+                # 创建临时输入数据用于初始化模型
+                temp_X_train = np.random.randn(100, 10)  # 默认形状
+                
+                # 保存当前状态
+                current_model = getattr(self, 'model', None)
+                
+                # 临时初始化模型
+                temp_model = TrainerDAGMM(self.args, temp_X_train, self.device)
+                
+                # 计算参数
+                params = {"model": sum(p.numel() for p in temp_model.model.parameters())}
+                params["total"] = params["model"]
+                
+                # 恢复状态
+                if current_model is not None:
+                    self.model = current_model
+                
+                return params
+                
+            except Exception as e:
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            params = {"model": sum(p.numel() for p in self.model.model.parameters())}
+            params["total"] = params["model"]
+            return params
+
 # X_train=np.random.randn(5000, 16)
 # X_test=np.random.randn(2000, 16)
 #

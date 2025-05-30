@@ -324,3 +324,65 @@ class AABiGAN:
             self.discriminator = None
 
         return self
+
+    def parameter_count(self) -> dict:
+        """
+        计算模型的参数量
+
+        Returns:
+            dict: 包含各组件参数量的字典
+        """
+        if not self.is_fitted:
+            # 如果模型未训练，创建临时模型实例来计算参数
+            temp_input_dim = 100  # 默认输入维度用于估算
+
+            # 保存当前状态
+            current_generator = self.generator
+            current_encoder = self.encoder
+            current_discriminator = self.discriminator
+
+            try:
+                # 临时初始化模型
+                self._initialize_models(temp_input_dim)
+
+                # 计算参数
+                params = self._count_parameters()
+
+                # 恢复状态
+                self.generator = current_generator
+                self.encoder = current_encoder
+                self.discriminator = current_discriminator
+
+                return params
+
+            except Exception as e:
+                # 恢复状态
+                self.generator = current_generator
+                self.encoder = current_encoder
+                self.discriminator = current_discriminator
+                return {"error": f"Failed to count parameters: {str(e)}"}
+        else:
+            return self._count_parameters()
+
+    def _count_parameters(self) -> dict:
+        """内部方法：计算各组件的参数量"""
+        params = {}
+
+        if self.generator is not None:
+            params["generator"] = sum(p.numel() for p in self.generator.parameters())
+        else:
+            params["generator"] = 0
+
+        if self.encoder is not None:
+            params["encoder"] = sum(p.numel() for p in self.encoder.parameters())
+        else:
+            params["encoder"] = 0
+
+        if self.discriminator is not None:
+            params["discriminator"] = sum(p.numel() for p in self.discriminator.parameters())
+        else:
+            params["discriminator"] = 0
+
+        params["total"] = params["generator"] + params["encoder"] + params["discriminator"]
+
+        return params

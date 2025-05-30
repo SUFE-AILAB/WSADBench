@@ -2,6 +2,7 @@ import numpy as np
 from WSADBench.baseline.REPEN.model import repen
 from WSADBench.myutils import Utils
 import os
+from keras import backend as K
 
 # we change the training epochs to 1000 since we find that the default setting (epochs=30) cannot guarantee
 class REPEN():
@@ -51,3 +52,66 @@ class REPEN():
     def predict_score(self, X):
         score = self.model.decision_function(X)
         return score
+
+    def parameter_count(self):
+        """
+        计算REPEN模型的参数数量
+        
+        Returns:
+            dict: 包含各个组件参数数量的字典
+        """
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                # 获取主网络模型
+                if hasattr(self.model, 'network') and self.model.network is not None:
+                    network_model = self.model.network.model
+                    if network_model is not None:
+                        total_params = network_model.count_params()
+                        trainable_params = sum([K.count_params(w) for w in network_model.trainable_weights])
+                        non_trainable_params = total_params - trainable_params
+                        
+                        return {
+                            'network_total': total_params,
+                            'network_trainable': trainable_params,
+                            'network_non_trainable': non_trainable_params,
+                            'total': total_params
+                        }
+                else:
+                    # 如果模型还没有训练，创建临时网络来计算参数
+                    from WSADBench.baseline.REPEN.model import Repen_network
+                    temp_network = Repen_network(hidden_dim=self.hidden_dim)
+                    # 假设输入维度为100（这是一个默认值，实际使用时会根据数据调整）
+                    temp_network.compile_model(input_dim=100)
+                    total_params = temp_network.model.count_params()
+                    trainable_params = sum([K.count_params(w) for w in temp_network.model.trainable_weights])
+                    non_trainable_params = total_params - trainable_params
+                    
+                    return {
+                        'network_total': total_params,
+                        'network_trainable': trainable_params,
+                        'network_non_trainable': non_trainable_params,
+                        'total': total_params,
+                        'note': 'Parameters counted from temporary model (input_dim=100)'
+                    }
+            else:
+                # 模型未初始化时的默认计算
+                from WSADBench.baseline.REPEN.model import Repen_network
+                temp_network = Repen_network(hidden_dim=self.hidden_dim)
+                temp_network.compile_model(input_dim=100)
+                total_params = temp_network.model.count_params()
+                trainable_params = sum([K.count_params(w) for w in temp_network.model.trainable_weights])
+                non_trainable_params = total_params - trainable_params
+                
+                return {
+                    'network_total': total_params,
+                    'network_trainable': trainable_params,
+                    'network_non_trainable': non_trainable_params,
+                    'total': total_params,
+                    'note': 'Parameters counted from temporary model (input_dim=100)'
+                }
+                
+        except Exception as e:
+            return {
+                'error': f'Failed to count parameters: {str(e)}',
+                'total': 0
+            }

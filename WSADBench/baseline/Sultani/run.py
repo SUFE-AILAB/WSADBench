@@ -403,3 +403,46 @@ class Sultani:
         results["accuracy"] = np.mean(predictions == y_test)
 
         return results
+
+    def parameter_count(self):
+        """
+        计算Sultani模型的参数数量
+
+        Returns:
+            dict: 包含各个组件参数数量的字典
+        """
+        try:
+            if hasattr(self, "model") and self.model is not None:
+                # 计算已初始化模型的参数
+                total_params = sum(p.numel() for p in self.model.parameters())
+                trainable_params = sum(
+                    p.numel() for p in self.model.parameters() if p.requires_grad
+                )
+                non_trainable_params = total_params - trainable_params
+
+                return {
+                    "sultani_total": total_params,
+                    "sultani_trainable": trainable_params,
+                    "sultani_non_trainable": non_trainable_params,
+                    "total": total_params,
+                }
+            else:
+                # 如果模型还没有初始化，创建临时模型来计算参数
+                from WSADBench.baseline.Sultani.model import SultaniLearner
+
+                temp_model = SultaniLearner(input_dim=self.input_dim, drop_p=self.dropout)
+                total_params = sum(p.numel() for p in temp_model.parameters())
+                trainable_params = sum(
+                    p.numel() for p in temp_model.parameters() if p.requires_grad
+                )
+                non_trainable_params = total_params - trainable_params
+
+                return {
+                    "sultani_total": total_params,
+                    "sultani_trainable": trainable_params,
+                    "sultani_non_trainable": non_trainable_params,
+                    "total": total_params,
+                    "note": f"Parameters counted from temporary model (input_dim={self.input_dim})",
+                }
+        except Exception as e:
+            return {"error": f"Failed to count parameters: {str(e)}", "total": 0}
