@@ -684,10 +684,10 @@ def main():
 
     parser.add_argument("--n_jobs", type=int, default=1, help="并行作业数量，-1表示使用所有CPU核心 (默认: 1)")
 
-    parser.add_argument("--output_dir", type=str, default="results", help="输出目录 (默认: results)")
+    parser.add_argument("--output_dir", type=str, default="results/tabular", help="输出目录 (默认: results)")
 
     parser.add_argument(
-        "--parameter_config_path", type=str, default="model_configs", help="模型参数配置文件目录 (默认: model_configs)"
+        "--parameter_config_path", type=str, default="WSADBench/model_configs/tabular", help="模型参数配置文件目录 (默认: model_configs)"
     )
 
     parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有Classical数据集")
