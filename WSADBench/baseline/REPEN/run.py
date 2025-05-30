@@ -8,7 +8,7 @@ class REPEN():
     def __init__(self, seed, model_name='REPEN', save_suffix='test',
                  mode:str='supervised', hidden_dim:int=20, batch_size:int=256, nb_batch:int=50, n_epochs:int=1000):
         self.utils = Utils()
-        self.device = self.utils.get_device()  # get device
+        self.device = self.utils.get_device(True)  # get device
         self.seed = seed
 
         self.MAX_INT = np.iinfo(np.int32).max

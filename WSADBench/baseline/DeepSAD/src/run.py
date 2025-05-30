@@ -13,7 +13,7 @@ from WSADBench.myutils import Utils
 class DeepSAD():
     def __init__(self, seed, model_name='DeepSAD'):
         self.utils = Utils()
-        self.device = self.utils.get_device()  # get device
+        self.device = self.utils.get_device(True)  # get device
         self.seed = seed
 
         self.net_name = 'dense'

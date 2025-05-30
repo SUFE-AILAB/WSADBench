@@ -12,7 +12,7 @@ class GANomaly():
                  act_fun=nn.Tanh(), lr:float=1e-2, mom:float=0.7):
 
         self.utils = Utils()
-        self.device = self.utils.get_device()  # get device
+        self.device = self.utils.get_device(True)  # get device
         self.seed = seed
 
         # hyper-parameters

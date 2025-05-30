@@ -218,10 +218,15 @@ class DataGenerator():
     def generator(self, X=None, y=None, minmax=True,
                   la=None, at_least_one_labeled=False,
                   realistic_synthetic_mode=None, alpha:int=5, percentage:float=0.1,
-                  noise_type=None, duplicate_times:int=2, contam_ratio=1.00, noise_ratio:float=0.05):
+                  noise_type=None, duplicate_times:int=2, contam_ratio=1.00, noise_ratio:float=0.05,
+                  la_shortage_mode='ignore'
+                  ):
         '''
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
         at_least_one_labeled: whether to guarantee at least one labeled anomalies in the training set
+        la_shortage_mode: behavior when anomaly count < required la
+        - 'raise': raise error
+        - 'ignore': return all available anomalies only  
         '''
 
         # set seed for reproducible results
@@ -244,16 +249,6 @@ class DataGenerator():
             X = data['X']
             y = data['y']
 
-        # number of labeled anomalies in the original data
-        if type(la) == float:
-            if at_least_one_labeled:
-                n_labeled_anomalies = ceil(sum(y) * (1 - self.test_size) * la)
-            else:
-                n_labeled_anomalies = int(sum(y) * (1 - self.test_size) * la)
-        elif type(la) == int:
-            n_labeled_anomalies = la
-        else:
-            raise NotImplementedError
 
         # if the dataset is too small, generating duplicate smaples up to n_samples_threshold
         if len(y) < self.n_samples_threshold and self.generate_duplicates:
@@ -348,7 +343,13 @@ class DataGenerator():
                 idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
         elif type(la) == int:
             if la > len(idx_anomaly):
-                raise AssertionError(f'the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !')
+                if la_shortage_mode == 'raise':
+                    raise AssertionError(f'the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !'
+                                            f'Please set a smaller la or change the la_shortage_mode to "ignore" or "duplicate".')
+                elif la_shortage_mode == 'ignore':
+                    idx_labeled_anomaly = idx_anomaly
+                else:
+                    raise NotImplementedError(f'la_shortage_mode {la_shortage_mode} is not implemented!')
             else:
                 idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
         else:

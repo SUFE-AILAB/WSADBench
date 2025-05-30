@@ -18,7 +18,7 @@ class PReNet():
 
         self.seed = seed
         self.utils = Utils()
-        self.device = self.utils.get_device()
+        self.device = self.utils.get_device(True)
 
         # hyper-parameters
         self.epochs = epochs
