@@ -1,0 +1,18 @@
+PREPROCESS:
+    MODALITY: RGB
+    INPUT_DIR: 'WSADBench/datasets/source_datasets/UCF_Crime/'
+    OUTPUT_DIR: 'WSADBench/datasets/CV_by_I3D/UCF_Crime/'
+    RAW_DATA_DIR: 'WSADBench/datasets/source_datasets/UCF_Crime/raw_data/'
+    MODALITY_SAVE_DIR: 'all_rgbs'
+    RESIZE: [340, 256]
+    NUM_CLIPS: -1
+    NUM_FRAMES: 16
+    NUM_CLASSES: 2
+    CROPS: Ten
+    MODEL: WSADBench.datasets.dataset_support.pretrained_models.I3DFeatureExtractorRGB
+    MODEL_BATCH_SIZE: 128
+    COPY:
+        - ['splits', 'splits']
+        - ['Temporal_Anomaly_Annotation_for_Testing_Videos.txt', 'Temporal_Anomaly_Annotation_for_Testing_Videos.txt']
+
+

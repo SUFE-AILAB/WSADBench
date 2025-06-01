@@ -1,0 +1,9 @@
+DATA:
+    DATA_DIR: 'WSADBench/datasets/CV_by_I3D/UCF_Crime/'
+    SPLIT_DIR: 'splits/'
+    SPLIT_FILE:
+        - {'train': 'train_001.txt', 'test': 'test_001.txt'}
+        - {'train': 'train_002.txt', 'test': 'test_002.txt'}
+        - {'train': 'train_003.txt', 'test': 'test_003.txt'}
+        - {'train': 'train_004.txt', 'test': 'test_004.txt'}
+    LABEL_LIST: 'Temporal_Anomaly_Annotation_for_Testing_Videos.txt'
