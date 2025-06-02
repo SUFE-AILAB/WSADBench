@@ -107,29 +107,3 @@ class I3DFeatureExtractorFlow(nn.Module):
     
     def forward(self, x):
         raise NotImplementedError("Flow modality I3D feature extractor is not implemented yet")
-
-
-def get_model_class(model_class_path: str):
-    """
-    动态导入并返回模型类
-    
-    Args:
-        model_class_path: 模型类的完整路径，格式如 'module.submodule.ClassName'
-        
-    Returns:
-        模型类
-    """
-    try:
-        module_path, class_name = model_class_path.rsplit('.', 1)
-        
-        # 动态导入模块
-        import importlib
-        module = importlib.import_module(module_path)
-        
-        # 获取类
-        model_class = getattr(module, class_name)
-        
-        return model_class
-        
-    except Exception as e:
-        raise ImportError(f"Failed to import model class {model_class_path}: {e}")

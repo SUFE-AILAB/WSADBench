@@ -1,0 +1,16 @@
+classical:
+  DATA_DIR: 'WSADBench/datasets/Classical/'
+cv:
+  DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18/'
+nlp:
+  DATA_DIR: 'WSADBench/datasets/NLP_by_BERT/'
+video:
+  UCF_Crime:
+      MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.UCFCrimeManager'
+      DATA_DIR: 'WSADBench/datasets/CV_by_I3D/UCF_Crime/'
+      SPLIT_DIR: 'splits/'
+      SPLIT_FILE: {'train': 'Anomaly_Train.txt', 'test': 'Anomaly_Test.txt'}
+      LABEL_LIST: 'UCF_Annotation.txt'
+      MODALITY: RGB
+      MODALITY_DIR: 'all_rgbs'
+      NUM_FRAMES: 16

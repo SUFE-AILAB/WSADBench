@@ -16,6 +16,33 @@ import matplotlib.pyplot as plt
 # statistical analysis
 from scipy.stats import wilcoxon
 
+
+def import_class(class_path: str):
+    """
+    动态导入并返回模类
+    
+    Args:
+        class_path: 类的完整路径，格式如 'module.submodule.ClassName'
+        
+    Returns:
+        类
+    """
+    try:
+        module_path, class_name = class_path.rsplit('.', 1)
+        
+        # 动态导入模块
+        import importlib
+        module = importlib.import_module(module_path)
+        
+        # 获取类
+        target_class = getattr(module, class_name)
+        
+        return target_class
+        
+    except Exception as e:
+        raise ImportError(f"Failed to import model class {class_path}: {e}")
+
+
 class Utils():
     def __init__(self):
         pass

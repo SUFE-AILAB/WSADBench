@@ -1,0 +1,13 @@
+# IForest模型配置文件
+# 使用PyOD的IForest算法
+
+# 模型类路径
+model_class: WSADBench.baseline.PyOD.PYOD
+
+# 模型参数
+parameters:
+  # 指定使用IForest算法
+  model_name: "IForest"
+  
+  # 是否启用超参数调优
+  tune: false

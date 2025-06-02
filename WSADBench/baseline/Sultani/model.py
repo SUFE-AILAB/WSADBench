@@ -88,50 +88,6 @@ class SultaniLearner(nn.Module):
         return self.vars
 
 
-class SultaniFeatureExtractor(nn.Module):
-    """
-    特征提取器（可选）
-    如果输入不是预提取的特征，可以使用此模块进行特征提取
-    """
-    
-    def __init__(self, backbone: str = 'resnet18', pretrained: bool = True):
-        """
-        初始化特征提取器
-        
-        Args:
-            backbone: 骨干网络类型
-            pretrained: 是否使用预训练权重
-        """
-        super(SultaniFeatureExtractor, self).__init__()
-        
-        if backbone == 'resnet18':
-            from torchvision.models import resnet18
-            self.backbone = resnet18(pretrained=pretrained)
-            # 移除最后的分类层
-            self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
-            self.feature_dim = 512
-        elif backbone == 'resnet50':
-            from torchvision.models import resnet50
-            self.backbone = resnet50(pretrained=pretrained)
-            self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
-            self.feature_dim = 2048
-        else:
-            raise ValueError(f"Unsupported backbone: {backbone}")
-    
-    def forward(self, x):
-        """
-        提取特征
-        
-        Args:
-            x: 输入图像 [batch_size, channels, height, width]
-            
-        Returns:
-            特征向量 [batch_size, feature_dim]
-        """
-        features = self.backbone(x)
-        features = features.view(features.size(0), -1)
-        return features
-
 
 def init_weights_xavier(module):
     """

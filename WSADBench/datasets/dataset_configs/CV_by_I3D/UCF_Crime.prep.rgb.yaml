@@ -14,6 +14,6 @@ PREPROCESS:
     MODEL_BATCH_SIZE: 128
     COPY:
         - ['splits', 'splits']
-        - ['Temporal_Anomaly_Annotation_for_Testing_Videos.txt', 'Temporal_Anomaly_Annotation_for_Testing_Videos.txt']
+        - ['UCF_Annotation.txt', 'UCF_Annotation.txt']
 
 

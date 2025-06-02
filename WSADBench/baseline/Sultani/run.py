@@ -14,8 +14,8 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import time
 
 from WSADBench.myutils import Utils
-from WSADBench.baseline.Sultani.model import SultaniLearner, SultaniFeatureExtractor
-from WSADBench.baseline.Sultani.fit import fit_sultani_simple, create_mil_dataloader, mil_loss
+from WSADBench.baseline.Sultani.model import SultaniLearner
+from WSADBench.baseline.Sultani.fit import fit_sultani_main
 
 
 class Sultani:
@@ -143,7 +143,7 @@ class Sultani:
         self._init_model()
         # 训练模型
         try:
-            self.training_history = fit_sultani_simple(
+            self.training_history = fit_sultani_main(
                 X_train=X,
                 y_train=y,
                 model=self.model,
@@ -176,7 +176,7 @@ class Sultani:
                 if len(np.unique(y_test)) > 1:
                     test_auc = roc_auc_score(y_test, test_scores)
                     test_ap = average_precision_score(y_test, test_scores)
-                    print(f"测试集 AUC: {test_auc:.4f}, AP: {test_ap:.4f}")
+                    print(f"测试集 AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
 
         return self
 
@@ -222,7 +222,6 @@ class Sultani:
 
         self.model.eval()
 
-        # 数据预处理
         X = self._preprocess_data(X)
         X_tensor = torch.FloatTensor(X).to(self.device)
 
@@ -317,92 +316,6 @@ class Sultani:
             self.fitted = False
 
         return self
-
-    def save_model(self, filepath):
-        """
-        保存模型
-
-        Args:
-            filepath: 保存路径
-        """
-        if not self.fitted:
-            raise ValueError("模型尚未训练，无法保存")
-
-        torch.save(
-            {
-                "model_state_dict": self.model.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-                "model_params": self.get_params(),
-                "training_history": self.training_history,
-            },
-            filepath,
-        )
-
-        if self.verbose:
-            print(f"模型已保存至: {filepath}")
-
-    def load_model(self, filepath):
-        """
-        加载模型
-
-        Args:
-            filepath: 模型路径
-        """
-        checkpoint = torch.load(filepath, map_location=self.device)
-
-        # 设置参数
-        self.set_params(**checkpoint["model_params"])
-
-        # 初始化模型
-        self._init_model()
-
-        # 加载权重
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-        # 恢复训练历史
-        self.training_history = checkpoint.get("training_history", None)
-
-        self.fitted = True
-
-        if self.verbose:
-            print(f"模型已从 {filepath} 加载")
-
-    def get_training_history(self):
-        """
-        获取训练历史
-
-        Returns:
-            训练历史字典
-        """
-        return self.training_history
-
-    def evaluate(self, X_test, y_test):
-        """
-        评估模型性能
-
-        Args:
-            X_test: 测试特征
-            y_test: 测试标签
-
-        Returns:
-            性能指标字典
-        """
-        if not self.fitted:
-            raise ValueError("模型尚未训练，请先调用fit()方法")
-
-        scores = self.predict_proba(X_test)
-        predictions = self.predict(X_test)
-
-        results = {}
-
-        if len(np.unique(y_test)) > 1:
-            results["auc"] = roc_auc_score(y_test, scores)
-            results["ap"] = average_precision_score(y_test, scores)
-
-        results["accuracy"] = np.mean(predictions == y_test)
-
-        return results
 
     def parameter_count(self):
         """

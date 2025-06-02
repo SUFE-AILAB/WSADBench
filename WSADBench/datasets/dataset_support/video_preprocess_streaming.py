@@ -34,7 +34,7 @@ from pytorchvideo.data.encoded_video import EncodedVideo
 from torchvision.transforms import TenCrop, FiveCrop, Normalize, Resize, ToTensor, ToPILImage, CenterCrop
 
 # 导入动态模型加载函数
-from WSADBench.datasets.dataset_support.pretrained_models import get_model_class
+from WSADBench.myutils import import_class
 from decord import VideoReader, cpu, gpu
 
 from numpy.lib.format import open_memmap
@@ -278,7 +278,7 @@ class GPUWorker:
     def _init_model(self):
         """初始化模型"""
         model_class_path = self.config["PREPROCESS"].get("MODEL")
-        ModelClass = get_model_class(model_class_path)
+        ModelClass = import_class(model_class_path)
         weights_path = self.config["PREPROCESS"].get("WEIGHTS_PATH")
         self.model = ModelClass(pretrained=True, weights_path=weights_path)
         self.model.to(self.device)

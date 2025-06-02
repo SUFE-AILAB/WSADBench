@@ -154,12 +154,9 @@ def fit_sultani(model, optimizer, train_loader, epochs, device,
     return train_history
 
 
-def fit_sultani_simple(X_train, y_train, model, optimizer, epochs, batch_size, device,
+def fit_sultani_main(X_train, y_train, model, optimizer, epochs, batch_size, device,
                       sparsity_weight=0.00008, smoothness_weight=0.00008, verbose=True):
     """
-    简化版Sultani训练函数
-    适用于已预处理的训练数据
-    
     Args:
         X_train: 训练特征 [n_samples, feature_dim]
         y_train: 训练标签 [n_samples]
@@ -218,44 +215,3 @@ def fit_sultani_simple(X_train, y_train, model, optimizer, epochs, batch_size, d
     # 调用主训练函数
     return fit_sultani(model, optimizer, train_loader, epochs, device,
                       sparsity_weight, smoothness_weight, verbose)
-
-
-def create_mil_dataloader(X_train, y_train, batch_size=1, segments_per_video=32):
-    """
-    创建MIL格式的数据加载器
-    
-    Args:
-        X_train: 训练特征
-        y_train: 训练标签
-        batch_size: 批量大小
-        segments_per_video: 每个视频的段数
-        
-    Returns:
-        DataLoader
-    """
-    # 分离正常和异常数据
-    normal_mask = y_train == 0
-    anomaly_mask = y_train == 1
-    
-    X_normal = X_train[normal_mask]
-    X_anomaly = X_train[anomaly_mask]
-    
-    # 重塑为视频格式
-    n_normal_videos = len(X_normal) // segments_per_video
-    n_anomaly_videos = len(X_anomaly) // segments_per_video
-    
-    min_videos = min(n_normal_videos, n_anomaly_videos)
-    if min_videos == 0:
-        min_videos = 1
-        segments_per_video = min(len(X_normal), len(X_anomaly))
-    
-    X_normal_videos = X_normal[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
-    X_anomaly_videos = X_anomaly[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
-    
-    # 创建数据集
-    dataset = TensorDataset(
-        torch.FloatTensor(X_normal_videos),
-        torch.FloatTensor(X_anomaly_videos)
-    )
-    
-    return DataLoader(dataset, batch_size=batch_size, shuffle=True)

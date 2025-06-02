@@ -1,0 +1,20 @@
+# CRGAN模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.CRGAN.run.CRGAN
+
+# 模型参数
+parameters:
+  # 训练参数
+  epochs: 150
+  batch_size: 32
+  lr: 0.0002
+  
+  # 模型架构参数
+  latent_dim: 100
+  
+  # 损失函数权重
+  lambda_recon: 1.0
+  lambda_adv: 1.0
+verbose: true

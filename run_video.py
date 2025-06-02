@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-通用模型在Classical数据集上的并行运行脚本
+通用模型在video数据集上的并行运行脚本
 
 支持:
 - 通过命令行指定模型名称，支持运行多个模型
 - 从YAML配置文件加载模型特定参数
-- 在Classical数据集上运行10个seeds
+- 在video数据集上运行10个seeds
 - 将AUCROC、AUCPR、运行时间等结果写入Excel
 - 支持并行运行多个设置
 """
@@ -73,8 +73,8 @@ class ModelRegistry:
         return default_model_map.get(model_name, None)
 
 
-class GeneralClassicalRunner:
-    """通用模型在Classical数据集上的运行器"""
+class GeneralvideoRunner:
+    """通用模型在video数据集上的运行器"""
 
     def __init__(
         self,
@@ -94,7 +94,7 @@ class GeneralClassicalRunner:
             n_jobs: 并行作业数量，-1表示使用所有CPU核心
             output_dir: 输出目录，默认为当前目录下的results文件夹
             parameter_config_path: 参数配置文件路径
-            datasets: 数据集列表，默认使用所有Classical数据集
+            datasets: 数据集列表，默认使用所有video数据集
             rla_list: 标注异常比例列表，默认使用预设值
             seed_list: 随机种子列表，默认1-10
         """
@@ -131,7 +131,7 @@ class GeneralClassicalRunner:
 
         # 获取数据集列表
         if datasets is None:
-            self.datasets = self.get_classical_datasets()
+            self.datasets = self.get_datasets()
         else:
             self.datasets = datasets
 
@@ -141,7 +141,7 @@ class GeneralClassicalRunner:
         # 保存模型参数统计
         self._save_model_stats()
 
-        logger.info(f"初始化通用Classical运行器，模型: {self.models}")
+        logger.info(f"初始化通用video运行器，模型: {self.models}")
         logger.info(f"并行作业数: {self.n_jobs}")
         logger.info(f"输出目录: {self.output_dir.absolute()}")
         logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
@@ -212,7 +212,7 @@ class GeneralClassicalRunner:
             try:
                 # 创建一个临时模型实例来计算参数
                 temp_model = self.create_model(model_name, seed=1)
-                
+
                 # 优先使用模型的parameter_count方法
                 if hasattr(temp_model, "parameter_count"):
                     try:
@@ -256,10 +256,9 @@ class GeneralClassicalRunner:
 
             logger.info(f"保存 {model_name} 模型统计信息到: {stats_file}")
 
-    def get_classical_datasets(self):
-        """获取Classical数据集列表"""
-        datasets = self.data_generator.generate_dataset_list()['classical']
-        logger.info(f"找到 {len(datasets)} 个Classical数据集")
+    def get_datasets(self):
+        datasets = self.data_generator.generate_dataset_list()["video"]
+        logger.info(f"找到 {len(datasets)} 个Video数据集")
         return datasets
 
     def create_model(self, model_name: str, seed: int, **kwargs):
@@ -326,8 +325,16 @@ class GeneralClassicalRunner:
 
             # 训练时间
             start_time = time.time()
+
+            _clips_num, _crops_num, _dim = data["X_train"].shape
+            data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
+            data["y_train"] = data["y_train"].repeat(_crops_num)
+
             model.fit(data["X_train"], data["y_train"])
             fit_time = time.time() - start_time
+
+            _clips_num, _crops_num, _dim = data["X_test"].shape
+            data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
 
             # 推理时间
             start_time = time.time()
@@ -337,14 +344,39 @@ class GeneralClassicalRunner:
                 scores = model.decision_function(data["X_test"])
             elif hasattr(model, "predict_proba"):
                 proba = model.predict_proba(data["X_test"])
-                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+                if proba.ndim == 1:
+                    scores = proba
+                else:
+                    scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
             else:
                 raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+
+            scores = scores.reshape(_clips_num, _crops_num)
+            scores = np.mean(scores, axis=1)  # 平均每个crop, 获得每个clip的分数
 
             inference_time = time.time() - start_time
 
             # 计算性能指标
-            metrics = self.utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
+
+            # 开始还原clip级别score为帧级别score
+            y_test_idx = data["y_test_idx"]
+            y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+            num_clip_frames = data["NUM_FRAMES"]
+
+            frame_scores = []
+            frame_truth = []
+            for i in range(max(y_test_gt_idx) + 1):
+                select_gt = y_test_gt[y_test_gt_idx == i]
+                select_scores = scores[y_test_idx == i]
+                select_scores = select_scores.repeat(num_clip_frames)
+                common_length = min(len(select_gt), len(select_scores))
+
+                frame_scores.append(select_scores[:common_length])
+                frame_truth.append(select_gt[:common_length])
+
+            frame_scores = np.concatenate(frame_scores, axis=0)
+            frame_truth = np.concatenate(frame_truth, axis=0)
+            metrics = self.utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
 
             result = {
                 "model": model_name,
@@ -373,6 +405,7 @@ class GeneralClassicalRunner:
             return result
 
         except Exception as e:
+            # raise e  # 重新抛出异常以便在主函数中处理
             logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
             return {
                 "model": model_name,
@@ -477,7 +510,7 @@ class GeneralClassicalRunner:
 
         # 创建文件名
         models_str = "_".join(self.models)
-        filename_base = f"general_classical_{models_str}_{timestamp}"
+        filename_base = f"general_video_{models_str}_{timestamp}"
 
         # 保存详细结果
         detailed_file = self.output_dir / f"{filename_base}_detailed.xlsx"
@@ -520,7 +553,7 @@ class GeneralClassicalRunner:
         logger.info("开始生成汇总报告...")
 
         generate_summary_only(self.output_dir)
-        
+
         logger.info("汇总报告生成完成。")
 
 
@@ -678,19 +711,22 @@ def generate_summary_only(output_dir):
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description="通用模型在Classical数据集上的并行运行")
+    parser = argparse.ArgumentParser(description="通用模型在video数据集上的并行运行")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
     parser.add_argument("--n_jobs", type=int, default=1, help="并行作业数量，-1表示使用所有CPU核心 (默认: 1)")
 
-    parser.add_argument("--output_dir", type=str, default="results/tabular", help="输出目录 (默认: results)")
+    parser.add_argument("--output_dir", type=str, default="results/video", help="输出目录 (默认: results)")
 
     parser.add_argument(
-        "--parameter_config_path", type=str, default="WSADBench/model_configs/tabular", help="模型参数配置文件目录 (默认: model_configs)"
+        "--parameter_config_path",
+        type=str,
+        default="WSADBench/model_configs/video",
+        help="模型参数配置文件目录 (默认: model_configs)",
     )
 
-    parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有Classical数据集")
+    parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有video数据集")
 
     parser.add_argument(
         "--rla_list",
@@ -736,7 +772,7 @@ def main():
     args.rla_list = _rla_list
 
     # 创建运行器
-    runner = GeneralClassicalRunner(
+    runner = GeneralvideoRunner(
         models=args.models,
         n_jobs=args.n_jobs,
         output_dir=args.output_dir,
@@ -764,29 +800,29 @@ if __name__ == "__main__":
 使用示例:
 
 # 运行RoSAS模型
-python run_general_classical.py --models RoSAS --n_jobs 4
+python run_general_video.py --models RoSAS --n_jobs 4
 
 # 运行多个模型
-python run_general_classical.py --models RoSAS AABiGAN --n_jobs 8
+python run_general_video.py --models RoSAS AABiGAN --n_jobs 8
 
 # 指定特定数据集和RLA
-python run_general_classical.py --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0
+python run_general_video.py --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0
 
 # 指定随机种子
-python run_general_classical.py --models RoSAS --seed_list 1 2 3 4 5
+python run_general_video.py --models RoSAS --seed_list 1 2 3 4 5
 
 # 使用自定义配置目录
-python run_general_classical.py --models RoSAS --parameter_config_path ./my_configs
+python run_general_video.py --models RoSAS --parameter_config_path ./my_configs
 
 # 并行运行，使用所有CPU核心
-python run_general_classical.py --models RoSAS AABiGAN --n_jobs -1
+python run_general_video.py --models RoSAS AABiGAN --n_jobs -1
 
 # 仅进行汇总（从已有的detail目录生成summary，不需要指定models参数）
-python run_general_classical.py --dry_summary
+python run_general_video.py --dry_summary
 
 # 指定输出目录进行汇总
-python run_general_classical.py --dry_summary --output_dir ./results
+python run_general_video.py --dry_summary --output_dir ./results
 
 # 快速测试
-python run_general_classical.py --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1
+python run_general_video.py --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1
 """

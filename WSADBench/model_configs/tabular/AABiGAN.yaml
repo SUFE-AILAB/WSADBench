@@ -1,0 +1,23 @@
+# AABiGAN模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.AABiGAN.run.AABiGAN
+
+# 模型参数
+parameters:
+  # 训练参数
+  epochs: 300
+  batch_size: 64
+  
+  # 学习率
+  lr_g: 0.0001  # 生成器学习率
+  lr_e: 0.0001  # 编码器学习率
+  lr_d: 0.0001  # 判别器学习率
+  
+  # 模型架构参数
+  latent_dim: 200
+  modal: "tabular"
+
+# 其他参数
+verbose: true
