@@ -45,18 +45,22 @@ logger = logging.getLogger(__name__)
 class VideoProcessor:
     """视频处理器 - 生成segment级别的任务"""
 
-    def __init__(self, config: Dict, segment_len: int = 50, output_dir: str = None):
+    def __init__(self, config: Dict, segment_len: int = 50, output_dir: str = None, max_read_segment_in_block: int = 2):
         self.config = config
         self.num_frames = config["PREPROCESS"]["NUM_FRAMES"]
         self.num_clips = config["PREPROCESS"]["NUM_CLIPS"]
         self.resize_dims = config["PREPROCESS"]["RESIZE"]
         self.segment_len = segment_len  # 每段包含的clip数量
         self.output_dir = output_dir or config["PREPROCESS"]["OUTPUT_DIR"]
+        self.max_read_segment_in_block = (
+            max_read_segment_in_block  # 每次视频读取的最大段数，越大占用内存越多，但速度快。反之会需要更多磁盘io。
+        )
+        self.crop_size = config["PREPROCESS"].get("CROP_SIZE", 224)
         self._create_transforms()
 
     def _create_transforms(self):
         """创建数据转换"""
-        target_size = 224
+        target_size = self.crop_size
 
         # 获取配置的模态和Crop类型
         self.modality = self.config["PREPROCESS"].get("MODALITY", "RGB").upper()
@@ -95,57 +99,71 @@ class VideoProcessor:
         video_path, relative_path = video_info
         video_name = Path(video_path).name
 
+        segment_frames = self.segment_len * self.num_frames
+        max_frames_in_block = self.max_read_segment_in_block * segment_frames
+
         try:
             video_reader = VideoReader(video_path, ctx=cpu())
             total_frames = len(video_reader)
-            frames_hwc = video_reader.get_batch(range(total_frames)).asnumpy()
-            frames = torch.from_numpy(frames_hwc).float()
-            frames = frames.permute(3, 0, 1, 2)  # [T, H, W, C] -> [C, T, H, W]
-
-            logger.info(f"Processing video {video_name} with {total_frames} frames")
-
-            segment_frames = self.segment_len * self.num_frames
             all_clips = int(np.ceil(total_frames / self.num_frames)) if self.num_clips == -1 else self.num_clips
 
-            for i in range(0, total_frames, segment_frames):
-                segment = frames[:, i : i + segment_frames, :, :]
-                segment_idx = i // segment_frames
+            start_read_frame = 0
+            while start_read_frame < total_frames:
+                end_read_frame = min(start_read_frame + max_frames_in_block, total_frames)
+                frames_npy = video_reader.get_batch(range(start_read_frame, end_read_frame)).asnumpy()
+                frames = torch.from_numpy(frames_npy).float()
+                frames = frames.permute(3, 0, 1, 2)  # [T, H, W, C] -> [C, T, H, W]
 
-                # 提取segment的clips
-                segment_clips = self.extract_dense_clips(segment)
-                num_clips = segment_clips.shape[0]
+                del frames_npy
+                gc.collect()
 
-                # 计算在整个视频中的clip索引范围
-                clip_start_idx = int(i / self.num_frames)
-                clip_end_idx = clip_start_idx + num_clips
+                logger.info(f"Processing video {video_name} with {total_frames} frames")
 
-                logger.debug(
-                    f"Processing segment {segment_idx} for {video_name}, clips {clip_start_idx}:{clip_end_idx}"
-                )
+                for i in range(start_read_frame, end_read_frame, segment_frames):
+                    curr_i = i - start_read_frame  # 相对位置
+                    segment = frames[:, curr_i : curr_i + segment_frames, :, :]
 
-                # 生成结果文件路径
-                output_subdir = os.path.join(
-                    self.output_dir, self.config["PREPROCESS"]["MODALITY_SAVE_DIR"], relative_path
-                )
-                os.makedirs(output_subdir, exist_ok=True)
-                video_memmap_path = os.path.join(output_subdir, f"{video_name}.npy")
+                    # 提取segment的clips
+                    segment_clips = self.extract_dense_clips(segment)
+                    num_clips = segment_clips.shape[0]
 
-                yield {
-                    "video_path": video_path,
-                    "relative_path": relative_path,
-                    "video_name": video_name,
-                    "segment_idx": segment_idx,
-                    "segment_clips": segment_clips,
-                    "all_clips": all_clips,
-                    "clip_start_idx": clip_start_idx,
-                    "clip_end_idx": clip_end_idx,
-                    "success": True,
-                    "num_crops": self.num_crops,
-                    "video_memmap_path": video_memmap_path,
-                }
+                    # segment在整个视频中的索引
+                    segment_idx = i // segment_frames
+                    # 计算在整个视频中的clip索引范围
+                    clip_start_idx = int(i / self.num_frames)
+                    clip_end_idx = clip_start_idx + num_clips
 
-                # 释放segment内存
-                del segment, segment_clips
+                    logger.debug(
+                        f"Processing segment {segment_idx} for {video_name}, clips {clip_start_idx}:{clip_end_idx}"
+                    )
+
+                    # 生成结果文件路径
+                    output_subdir = os.path.join(
+                        self.output_dir, self.config["PREPROCESS"]["MODALITY_SAVE_DIR"], relative_path
+                    )
+                    os.makedirs(output_subdir, exist_ok=True)
+                    video_memmap_path = os.path.join(output_subdir, f"{video_name}.npy")
+
+                    yield {
+                        "video_path": video_path,
+                        "relative_path": relative_path,
+                        "video_name": video_name,
+                        "segment_idx": segment_idx,
+                        "segment_clips": segment_clips,
+                        "all_clips": all_clips,
+                        "clip_start_idx": clip_start_idx,
+                        "clip_end_idx": clip_end_idx,
+                        "success": True,
+                        "num_crops": self.num_crops,
+                        "video_memmap_path": video_memmap_path,
+                    }
+
+                    del segment, segment_clips
+                    gc.collect()
+
+                start_read_frame = end_read_frame
+
+                del frames
                 gc.collect()
 
         except Exception as e:
@@ -180,7 +198,8 @@ class VideoProcessor:
 
         all_crops = self.crop_transform(frames)  # [num_crops, T, C, H, W]
 
-        T, C, H, W = frames.shape
+        T, C, _, _ = frames.shape
+
         del frames  # 释放内存
         gc.collect()
 
@@ -189,8 +208,9 @@ class VideoProcessor:
                 # CenterCrop返回单个图像
                 frames = all_crops.unsqueeze(0)
         else:
-            frames = torch.empty((self.num_crops, T, C, 224, 224), dtype=torch.float32)
+            frames = torch.empty((self.num_crops, T, C, self.crop_size, self.crop_size), dtype=torch.float32)
             torch.stack(all_crops, out=frames)
+
             del all_crops  # 释放内存
             gc.collect()
 
@@ -209,18 +229,18 @@ class VideoProcessor:
         # 使用unfold进行non-overlapping clip提取
         clips_tensor = processed_frames.unfold(2, self.num_frames, self.num_frames)
         clips_tensor = clips_tensor.permute(2, 0, 1, 5, 3, 4)  # [num_clip, num_crops, C, num_frames, H, W]
-        
+
         num_possible_clips = clips_tensor.shape[0]
-        
+
         # 如果num_clips为-1，返回所有clips
         if self.num_clips == -1:
             return clips_tensor
-        
+
         # 如果可用clips数量足够，采样目标数量
         if num_possible_clips >= self.num_clips:
             indices = torch.linspace(0, num_possible_clips - 1, self.num_clips).long()
             return clips_tensor[indices]
-        
+
         # 如果可用clips数量不足，重复最后一个clip
         remaining = self.num_clips - num_possible_clips
         last_clip = clips_tensor[-1:].repeat(remaining, 1, 1, 1, 1, 1)
@@ -247,12 +267,12 @@ class GPUWorker:
         self.device = torch.device(f"cuda:{device_id}")
         self.model = None
         self.modality = config["PREPROCESS"].get("MODALITY", "RGB")
-        
+
         # 使用全局共享的视频状态跟踪
         self.global_video_locks = global_video_locks
         self.global_video_processed_tags = global_video_processed_tags
         self.global_locks_lock = global_locks_lock
-        
+
         self._init_model()
 
     def _init_model(self):
@@ -268,12 +288,12 @@ class GPUWorker:
     def _get_or_create_video_memmap(self, task: Dict, end_with=".processing") -> np.memmap:
         """获取或创建视频级别的memmap数组"""
         video_name = task["video_name"]
-        
+
         # 确保线程安全 - 使用全局锁来保护锁字典的访问
         with self.global_locks_lock:
             if video_name not in self.global_video_locks:
                 self.global_video_locks[video_name] = threading.Lock()
-        
+
         # 使用视频专用锁来保护memmap和状态的操作
         with self.global_video_locks[video_name]:
             video_memmap_path = task["video_memmap_path"] + end_with
@@ -405,6 +425,7 @@ class StreamingVideoPreprocessor:
         resume: bool = False,
         memory_threshold: float = 0.8,
         segment_len: int = 50,
+        max_read_segment_in_block: int = 2,
     ):
         """
         Args:
@@ -420,6 +441,7 @@ class StreamingVideoPreprocessor:
         self.max_queue = max_queue
         self.memory_threshold = memory_threshold
         self.segment_len = segment_len  # 添加segment_len参数
+        self.max_read_segment_in_block = max_read_segment_in_block
 
         # 信号处理相关
         self.should_stop = threading.Event()
@@ -427,7 +449,7 @@ class StreamingVideoPreprocessor:
         self.gpu_threads = []
         self.gpu_workers = []
         self.child_processes = []  # 追踪所有子进程，用于强制清理
-        
+
         # 全局共享的视频状态跟踪（所有GPU workers共享）
         self.global_video_locks = {}  # video_name -> threading.Lock()
         self.global_video_processed_tags = {}  # video_name -> np.array(bool)
@@ -464,8 +486,8 @@ class StreamingVideoPreprocessor:
 
         # 创建队列 - 只需要task_queue
         self.task_queue = queue.Queue(maxsize=queue_size)
-        
-        self.error_processed_videos = [] # 用于记录处理失败的视频
+
+        self.error_processed_videos = []  # 用于记录处理失败的视频
 
     def _signal_handler(self, signum, frame):
         """信号处理器，处理Ctrl+C和SIGTERM"""
@@ -527,7 +549,7 @@ class StreamingVideoPreprocessor:
                         logger.info(f"GPU thread {thread.name} terminated successfully")
         except Exception as e:
             logger.error(f"Error force cleaning up GPU threads: {e}")
-            
+
         logger.info("Force cleanup process completed")
 
     def _check_memory_usage(self) -> bool:
@@ -596,7 +618,8 @@ class StreamingVideoPreprocessor:
                 # 检查内存使用情况
                 memory_high = self._check_memory_usage()
 
-                if memory_high:
+                if self.task_queue.qsize() > 0 and memory_high:
+                    # self.task_queue.qsize()>0 的限制确保有任务在GPU处理，防止死锁
                     if not memory_wait_logged:
                         logger.warning(
                             f"Memory usage high, waiting indefinitely for memory to decrease before queuing {video_name}"
@@ -734,7 +757,9 @@ class StreamingVideoPreprocessor:
 
                 try:
                     # 创建具有正确输出目录的VideoProcessor
-                    video_processor = VideoProcessor(self.config, self.segment_len, output_dir)
+                    video_processor = VideoProcessor(
+                        self.config, self.segment_len, output_dir, self.max_read_segment_in_block
+                    )
 
                     # 使用VideoProcessor的生成器来处理视频
                     for task in video_processor.process_video(video_info):
@@ -863,13 +888,13 @@ class StreamingVideoPreprocessor:
             # 启动GPU工作线程
             for device_id in self.device_ids:
                 worker = GPUWorker(
-                    device_id, 
-                    self.config, 
-                    self.task_queue, 
+                    device_id,
+                    self.config,
+                    self.task_queue,
                     self.should_stop,
                     self.global_video_locks,
                     self.global_video_processed_tags,
-                    self.global_locks_lock
+                    self.global_locks_lock,
                 )
                 self.gpu_workers.append(worker)
                 thread = threading.Thread(target=worker.run, name=f"GPU-{device_id}")
@@ -894,7 +919,9 @@ class StreamingVideoPreprocessor:
             logger.info("Dataset processing completed")
             logger.info(f"Processed {len(video_files) - len(self.error_processed_videos)} videos successfully")
             if self.error_processed_videos:
-                logger.error(f"Failed to process {len(self.error_processed_videos)} videos: {self.error_processed_videos}")
+                logger.error(
+                    f"Failed to process {len(self.error_processed_videos)} videos: {self.error_processed_videos}"
+                )
 
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt, FORCE stopping...")
@@ -935,6 +962,12 @@ def main():
         default=1000,
         help="Number of clips per segment for memory management (default: 1000)",
     )
+    parser.add_argument(
+        "--max_read_segment_in_block",
+        type=int,
+        default=2,
+        help="Maximum number of segments to read in a single block (default: 2)",
+    )
 
     args = parser.parse_args()
 
@@ -944,7 +977,7 @@ def main():
 
     if args.segment_len <= 0:
         parser.error("segment_len must be greater than 0")
-        
+
     if args.max_queue <= 0:
         parser.error("max_queue must be greater than 0")
 
@@ -965,6 +998,7 @@ def main():
             resume=args.resume,
             memory_threshold=args.memory_limit,
             segment_len=args.segment_len,
+            max_read_segment_in_block=args.max_read_segment_in_block,
         )
         preprocessor.process_dataset()
         print("Streaming video preprocessing completed successfully!")
@@ -992,9 +1026,11 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH=. python WSADBench/datasets/dataset_support/
     --config_path WSADBench/datasets/dataset_configs/CV_by_I3D/UCF_Crime.prep.rgb.yaml \
     --resume --max_queue 10 --memory_limit 0.8 --segment_len 1000
 
-# 注意：
-# - max_queue 控制待处理任务的最大队列长度, 默认值为10. 较大的队列可以提高吞吐量，但会占用更多内存
-# 根据可用内存和GPU数量调整 max_queue 值以达到最佳性能
+注意：
+- max_queue 控制待处理任务的最大队列长度, 默认值为10. 大队列可以保证GPU运行效率, 不出现GPU一直等待CPU处理的情况, 但会占用更多内存
+根据可用内存和GPU数量调整 max_queue 值以达到最佳性能. 测试下来一般GPU数量的1-3倍即可。
 
+如果队列中任务消耗过快, 而内存又充足，可以适当调大 segment_len 参数, 该参数控制每次处理视频中多少个clip。
+而如果内存不足, 减小 segment_len 同时增多 max_queue 也是个可能的解决方案。
 
 """
