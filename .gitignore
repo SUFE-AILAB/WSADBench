@@ -21,8 +21,9 @@ backups/
 *.tar.xz
 *.xz
 useless_tries/
-WSADBench/datasets/CV/
-WSADBench/datasets/CV_by_I3D/
+WSADBench/datasets/CV*
+WSADBench/datasets/Classical
+WSADBench/datasets/NLP*
 run_adbench_wsad_baseline.py
-implementing/
+implementing
 source_datasets/
