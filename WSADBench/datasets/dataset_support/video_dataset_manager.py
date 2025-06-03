@@ -51,7 +51,7 @@ class UCFCrimeManager:
                 elif num_segments is not None:
                     arr = segment_average(arr, num_segments)
 
-                label = 0 if kind in NormalKind else 1
+                label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
 
                 arrs.append(arr)
@@ -73,7 +73,7 @@ class UCFCrimeManager:
                 idx = np.full(len(arr), i, dtype=np.int32)
                 
 
-                label = 0 if kind in NormalKind else 1
+                label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
 
                 name = file_path.stem
@@ -94,7 +94,6 @@ class UCFCrimeManager:
             }
 
         # 主体逻辑
-        NormalKind = {"Testing_Normal_Video_Anomaly", "Training_Normal_Video_Anomaly", "Normal_Videos_event"}
         splits = self.get_split()
         ground_truth_dict = self.load_ground_truth()
         data = {}

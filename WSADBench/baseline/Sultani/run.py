@@ -142,28 +142,20 @@ class Sultani:
         # 初始化模型
         self._init_model()
         # 训练模型
-        try:
-            self.training_history = fit_sultani_main(
-                X_train=X,
-                y_train=y,
-                model=self.model,
-                optimizer=self.optimizer,
-                epochs=self.epochs,
-                batch_size=self.batch_size,
-                device=self.device,
-                sparsity_weight=self.sparsity_weight,
-                smoothness_weight=self.smoothness_weight,
-                verbose=self.verbose,
-            )
+        self.training_history = fit_sultani_main(
+            X_train=X,
+            y_train=y,
+            model=self.model,
+            optimizer=self.optimizer,
+            epochs=self.epochs,
+            batch_size=self.batch_size,
+            device=self.device,
+            sparsity_weight=self.sparsity_weight,
+            smoothness_weight=self.smoothness_weight,
+            verbose=self.verbose,
+        )
 
-            self.fitted = True
-
-        except Exception as e:
-            print(f"训练过程中出现错误: {e}")
-            # 如果MIL训练失败，尝试简化训练
-            if self.verbose:
-                print("尝试使用简化训练方法...")
-            self._fit_simplified(X, y)
+        self.fitted = True
 
         training_time = time.time() - start_time
 
@@ -179,33 +171,6 @@ class Sultani:
                     print(f"测试集 AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
 
         return self
-
-    def _fit_simplified(self, X, y):
-        """简化训练方法"""
-        # 转换为张量
-        X_tensor = torch.FloatTensor(X).to(self.device)
-        y_tensor = torch.FloatTensor(y).to(self.device)
-
-        self.model.train()
-
-        for epoch in range(min(self.epochs, 50)):  # 限制epoch数
-            self.optimizer.zero_grad()
-
-            # 简单前向传播
-            outputs = self.model(X_tensor)
-
-            # 简化损失：二分类交叉熵
-            loss = nn.BCELoss()(outputs.squeeze(), y_tensor)
-
-            loss.backward()
-            self.optimizer.step()
-
-            if self.verbose and epoch % 10 == 0:
-                print(f"简化训练 Epoch {epoch+1}, Loss: {loss.item():.6f}")
-
-        self.fitted = True
-        if self.verbose:
-            print("简化训练完成")
 
     def predict_proba(self, X):
         """

@@ -181,29 +181,31 @@ def fit_sultani_main(X_train, y_train, model, optimizer, epochs, batch_size, dev
     X_normal = X_train[normal_mask]
     X_anomaly = X_train[anomaly_mask]
     
-    if len(X_anomaly) == 0:
-        raise ValueError("训练数据中没有异常样本！")
+    if len(X_anomaly) == 0 or len(X_normal) == 0:
+        raise ValueError("训练数据中必须同时包含正常和异常样本")
     
-    # 创建数据加载器
-    # 假设每个视频有32个片段
-    segments_per_video = 32
+    normal_clips_num, anomaly_clips_num = X_normal.shape[0], X_anomaly.shape[0]
+    
+    
+    # 通过过采样确保正常样本与异常样本数量相同
+    if normal_clips_num < anomaly_clips_num:
+        # 重复正常样本直到数量与异常样本相同
+        repeat_times = (anomaly_clips_num + normal_clips_num - 1) // normal_clips_num
+        X_normal = np.tile(X_normal, (repeat_times, 1))[:anomaly_clips_num]
+    elif anomaly_clips_num < normal_clips_num:
+        # 重复异常样本直到数量与正常样本相同
+        repeat_times = (normal_clips_num + anomaly_clips_num - 1) // anomaly_clips_num
+        X_anomaly = np.tile(X_anomaly, (repeat_times, 1))[:normal_clips_num]
+    
+    assert len(X_normal) == len(X_anomaly), "采样后正常样本和异常样本数量仍不匹配"
+    data_len = len(X_normal)
     
     # 重塑数据为视频段格式
-    n_normal_videos = len(X_normal) // segments_per_video
-    n_anomaly_videos = len(X_anomaly) // segments_per_video
+    segments_per_video = 32
+    segments_num = data_len // segments_per_video
     
-    if n_normal_videos == 0 or n_anomaly_videos == 0:
-        if verbose:
-            print("警告: 样本数量不足，使用重复采样...")
-        # 重复采样以确保有足够的数据
-        min_videos = max(1, min(len(X_normal), len(X_anomaly)) // segments_per_video)
-        
-        X_normal_videos = X_normal[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
-        X_anomaly_videos = X_anomaly[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
-    else:
-        min_videos = min(n_normal_videos, n_anomaly_videos)
-        X_normal_videos = X_normal[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
-        X_anomaly_videos = X_anomaly[:min_videos * segments_per_video].reshape(min_videos, segments_per_video, -1)
+    X_normal_videos = X_normal[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
+    X_anomaly_videos = X_anomaly[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
     
     # 创建训练数据集
     train_dataset = TensorDataset(
