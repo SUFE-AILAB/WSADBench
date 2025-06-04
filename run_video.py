@@ -99,22 +99,22 @@ class GeneralvideoRunner:
         self.models = models
         self.n_jobs = mp.cpu_count() if n_jobs == -1 else n_jobs
         self.output_dir = Path(output_dir) if output_dir else Path("results")
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(exist_ok=True, parents=True)
 
         self.parameter_config_path = Path(parameter_config_path) if parameter_config_path else Path("model_configs")
-        self.parameter_config_path.mkdir(exist_ok=True)
+        self.parameter_config_path.mkdir(exist_ok=True, parents=True)
 
         # 创建输出目录结构
         self.detail_dir = self.output_dir / "detail"
         self.summary_dir = self.output_dir / "summary"
-        self.detail_dir.mkdir(exist_ok=True)
-        self.summary_dir.mkdir(exist_ok=True)
+        self.detail_dir.mkdir(exist_ok=True, parents=True)
+        self.summary_dir.mkdir(exist_ok=True, parents=True)
 
         # 为每个模型创建子目录
         self.model_dirs = {}
         for model_name in self.models:
             model_dir = self.detail_dir / model_name
-            model_dir.mkdir(exist_ok=True)
+            model_dir.mkdir(exist_ok=True, parents=True)
             self.model_dirs[model_name] = model_dir
 
         # 工具类
@@ -489,63 +489,6 @@ class GeneralvideoRunner:
 
         return results
 
-    def save_results(self, results):
-        """
-        保存实验结果到Excel文件
-
-        Args:
-            results: 实验结果列表
-        """
-        if not results:
-            logger.warning("没有结果需要保存")
-            return
-
-        # 转换为DataFrame
-        df = pd.DataFrame(results)
-
-        # 生成时间戳
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-
-        # 创建文件名
-        models_str = "_".join(self.models)
-        filename_base = f"general_video_{models_str}_{timestamp}"
-
-        # 保存详细结果
-        detailed_file = self.output_dir / f"{filename_base}_detailed.xlsx"
-        df.to_excel(detailed_file, index=False)
-        logger.info(f"详细结果已保存到: {detailed_file}")
-
-        # 创建汇总表格
-        summary_dfs = {}
-
-        for metric in ["aucroc", "aucpr", "fit_time", "inference_time"]:
-            # 创建pivot表 (models x datasets x rla)，值为seeds的平均值和标准差
-            pivot_mean = df.groupby(["model", "dataset", "rla"])[metric].mean().unstack(fill_value=np.nan)
-            pivot_std = df.groupby(["model", "dataset", "rla"])[metric].std().unstack(fill_value=np.nan)
-
-            # 合并均值和标准差
-            summary_dfs[f"{metric}_mean"] = pivot_mean
-            summary_dfs[f"{metric}_std"] = pivot_std
-
-        # 保存汇总结果
-        summary_file = self.output_dir / f"{filename_base}_summary.xlsx"
-        with pd.ExcelWriter(summary_file) as writer:
-            # 详细结果
-            df.to_excel(writer, sheet_name="详细结果", index=False)
-
-            # 各指标汇总
-            for sheet_name, summary_df in summary_dfs.items():
-                summary_df.to_excel(writer, sheet_name=sheet_name)
-
-        logger.info(f"汇总结果已保存到: {summary_file}")
-
-        # 打印简要统计
-        self.print_summary_stats(df)
-
-    def print_summary_stats(self, df):
-        """打印简要统计信息"""
-        print_summary_statistics(df)
-
     def generate_summary(self):
         """生成汇总报告"""
         logger.info("开始生成汇总报告...")
@@ -653,7 +596,7 @@ def generate_summary_only(output_dir):
         logger.error(f"详细结果目录不存在: {detail_dir}")
         return
 
-    summary_dir.mkdir(exist_ok=True)
+    summary_dir.mkdir(exist_ok=True, parents=True)
 
     # 收集所有模型目录和结果文件
     all_results = []
