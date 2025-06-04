@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from WSADBench.datasets.data_generator import DataGenerator
-from WSADBench.myutils import Utils
+from WSADBench.myutils import Utils, import_class 
 
 
 class ModelRegistry:
@@ -46,9 +46,7 @@ class ModelRegistry:
     def get_model_class(model_class_path: str):
         """根据模型类路径获取模型类"""
         # 动态导入模型类
-        module_path, class_name = model_class_path.rsplit(".", 1)
-        module = __import__(module_path, fromlist=[class_name])
-        return getattr(module, class_name)
+        return import_class(model_class_path)
 
     @staticmethod
     def get_default_model_class_path(model_name: str):
