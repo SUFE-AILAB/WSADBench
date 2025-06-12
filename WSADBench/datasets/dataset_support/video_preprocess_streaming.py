@@ -912,7 +912,7 @@ class StreamingVideoPreprocessor:
             # 等待所有线程完成（带超时）
             for thread in self.gpu_threads:
                 if thread.is_alive():
-                    thread.join(timeout=0.5)
+                    thread.join()
                     if thread.is_alive():
                         logger.warning(f"GPU thread {thread.name} did not finish in time")
 
