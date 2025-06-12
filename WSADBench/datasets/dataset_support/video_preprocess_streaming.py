@@ -340,15 +340,8 @@ class GPUWorker:
                 task = self.task_queue.get(timeout=1)
 
                 if task is None:  # 结束信号
+                    self.task_queue.task_done()
                     logger.info(f"GPU {self.device_id}: Received stop signal")
-                    break
-
-                if self.should_stop.is_set():
-                    logger.info(f"GPU {self.device_id}: Stop signal detected")
-                    try:
-                        self.task_queue.put(task, timeout=0.1)
-                    except queue.Full:
-                        pass
                     break
 
                 if not task["success"]:
@@ -358,7 +351,6 @@ class GPUWorker:
                     continue
 
                 # 处理segment任务
-                start_time = time.time()
                 video_name = task["video_name"]
                 segment_clips = task["segment_clips"]
                 clip_start_idx = task["clip_start_idx"]
@@ -392,16 +384,16 @@ class GPUWorker:
                             os.rename(task["video_memmap_path"] + ".processing", task["video_memmap_path"])
                             logger.info(f"GPU {self.device_id}: Completed video {video_name}")
 
-                    self.task_queue.task_done()
-
                     # 释放内存
                     del segment_clips, features
                     gc.collect()
 
                 except Exception as e:
                     logger.error(f"GPU {self.device_id}: Error processing segment of {video_name}: {e}")
-                    self.task_queue.task_done()
 
+                finally:
+                    self.task_queue.task_done()
+                    
             except queue.Empty:
                 if self.should_stop.is_set():
                     logger.info(f"GPU {self.device_id}: Stop signal detected during timeout")
@@ -898,7 +890,6 @@ class StreamingVideoPreprocessor:
                 )
                 self.gpu_workers.append(worker)
                 thread = threading.Thread(target=worker.run, name=f"GPU-{device_id}")
-                thread.daemon = True  # 设置为守护线程
                 thread.start()
                 self.gpu_threads.append(thread)
 
@@ -909,12 +900,13 @@ class StreamingVideoPreprocessor:
             # 启动CPU生产者（在主线程中运行）
             self.cpu_producer(video_files, output_dir)
 
-            # 等待所有线程完成（带超时）
-            for thread in self.gpu_threads:
-                if thread.is_alive():
-                    thread.join()
-                    if thread.is_alive():
-                        logger.warning(f"GPU thread {thread.name} did not finish in time")
+            # 先等待队列中所有任务完成
+            logger.info("CPU producer finished. Waiting for all tasks in queue to complete...")
+            try:
+                self.task_queue.join()
+                logger.info("All tasks completed successfully")
+            except Exception as e:
+                logger.error(f"Error while waiting for tasks: {e}")
 
             logger.info("Dataset processing completed")
             logger.info(f"Processed {len(video_files) - len(self.error_processed_videos)} videos successfully")
