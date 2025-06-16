@@ -37,7 +37,7 @@ def mil_loss(y_pred, batch_size, sparsity_weight=0.00008, smoothness_weight=0.00
     smoothness_loss = torch.tensor(0., device=device)
     
     for i in range(batch_size):
-        # 假设前32个为异常段，后32个为正常段
+        # 前半是异常段，后半为正常段
         seq_len = y_pred.shape[1]
         mid_point = seq_len // 2
         

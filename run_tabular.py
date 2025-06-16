@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""
-通用模型在Classical数据集上的并行运行脚本
-
-支持:
-- 通过命令行指定模型名称，支持运行多个模型
-- 从YAML配置文件加载模型特定参数
-- 在Classical数据集上运行10个seeds
-- 将AUCROC、AUCPR、运行时间等结果写入Excel
-- 支持并行运行多个设置
-"""
-
-import os
-import sys
 import time
 import gc
 import argparse
@@ -25,18 +11,12 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import logging
 from typing import Dict, List, Optional, Any
-import threading
-import glob
 
-# 设置日志
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# 添加项目路径
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 from WSADBench.datasets.data_generator import DataGenerator
-from WSADBench.myutils import Utils, import_class 
+from WSADBench.myutils import Utils, import_class
 
 
 class ModelRegistry:
@@ -92,7 +72,7 @@ class GeneralClassicalRunner:
             n_jobs: 并行作业数量，-1表示使用所有CPU核心
             output_dir: 输出目录，默认为当前目录下的results文件夹
             parameter_config_path: 参数配置文件路径
-            datasets: 数据集列表，默认使用所有Classical数据集
+            datasets: 数据集列表
             rla_list: 标注异常比例列表，默认使用预设值
             seed_list: 随机种子列表，默认1-10
         """
@@ -102,7 +82,7 @@ class GeneralClassicalRunner:
         self.output_dir.mkdir(exist_ok=True, parents=True)
 
         self.parameter_config_path = Path(parameter_config_path) if parameter_config_path else Path("model_configs")
-        self.parameter_config_path.mkdir(exist_ok=True)
+        self.parameter_config_path.mkdir(exist_ok=True, parents=True)
 
         # 创建输出目录结构
         self.detail_dir = self.output_dir / "detail"
@@ -129,7 +109,7 @@ class GeneralClassicalRunner:
 
         # 获取数据集列表
         if datasets is None:
-            self.datasets = self.get_classical_datasets()
+            self.datasets = self.get_datasets()
         else:
             self.datasets = datasets
 
@@ -139,7 +119,7 @@ class GeneralClassicalRunner:
         # 保存模型参数统计
         self._save_model_stats()
 
-        logger.info(f"初始化通用Classical运行器，模型: {self.models}")
+        logger.info(f"初始化模型: {self.models}")
         logger.info(f"并行作业数: {self.n_jobs}")
         logger.info(f"输出目录: {self.output_dir.absolute()}")
         logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
@@ -210,7 +190,6 @@ class GeneralClassicalRunner:
             try:
                 # 创建一个临时模型实例来计算参数
                 temp_model = self.create_model(model_name, seed=1)
-                
                 # 优先使用模型的parameter_count方法
                 if hasattr(temp_model, "parameter_count"):
                     try:
@@ -254,9 +233,8 @@ class GeneralClassicalRunner:
 
             logger.info(f"保存 {model_name} 模型统计信息到: {stats_file}")
 
-    def get_classical_datasets(self):
-        """获取Classical数据集列表"""
-        datasets = self.data_generator.generate_dataset_list()['classical']
+    def get_datasets(self):
+        datasets = self.data_generator.generate_dataset_list()["classical"]
         logger.info(f"找到 {len(datasets)} 个Classical数据集")
         return datasets
 
@@ -335,7 +313,10 @@ class GeneralClassicalRunner:
                 scores = model.decision_function(data["X_test"])
             elif hasattr(model, "predict_proba"):
                 proba = model.predict_proba(data["X_test"])
-                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+                if proba.ndim == 1:
+                    scores = proba
+                else:
+                    scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
             else:
                 raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
 
@@ -456,16 +437,11 @@ class GeneralClassicalRunner:
 
         return results
 
-    def print_summary_stats(self, df):
-        """打印简要统计信息"""
-        print_summary_statistics(df)
-
     def generate_summary(self):
         """生成汇总报告"""
         logger.info("开始生成汇总报告...")
 
         generate_summary_only(self.output_dir)
-        
         logger.info("汇总报告生成完成。")
 
 
@@ -623,7 +599,7 @@ def generate_summary_only(output_dir):
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description="通用模型在Classical数据集上的并行运行")
+    parser = argparse.ArgumentParser(description="Anomaly Detection Experiments Runner")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
@@ -632,7 +608,10 @@ def main():
     parser.add_argument("--output_dir", type=str, default="results/tabular", help="输出目录 (默认: results)")
 
     parser.add_argument(
-        "--parameter_config_path", type=str, default="WSADBench/model_configs/tabular", help="模型参数配置文件目录 (默认: model_configs)"
+        "--parameter_config_path",
+        type=str,
+        default="WSADBench/model_configs/tabular",
+        help="模型参数配置文件目录 (默认: model_configs)",
     )
 
     parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有Classical数据集")

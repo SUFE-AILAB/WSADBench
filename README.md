@@ -38,22 +38,22 @@ pip install opencv-python
 #### 表格数据实验
 ```bash
 # 运行单个模型
-python run_tabular.py --models IForest
+python run_tabular.py --models IForest --data_type tabular
 
 # 运行多个模型
-python run_tabular.py --models IForest AABiGAN CRGAN
+python run_tabular.py --models IForest AABiGAN CRGAN --data_type tabular
 
 # 指定其他参数
-python run_tabular.py --models IForest --seeds 5 --processes 4
+python run_tabular.py --models IForest --seeds 5 --processes 4 --data_type tabular
 ```
 
 #### 视频数据实验
 ```bash
-# 运行Sultani模型
-python run_video.py --models Sultani
+python run_experiment.py --models Sultani --datasets UCF_Crime --n_jobs 1 --rla_list 1.0  --seed_list 0  --data_type video
 
-# 指定数据集
-python run_video.py --models Sultani --datasets UCF_Crime --n_jobs 1 --rla_list 1.0   --seed_list 0
+# 使用6号和7号两块gpu，并行跑2个任务跑Sultani 这个模型设置，跑10个seed。
+python run_experiment.py --models Sultani  --datasets UCF_Crime --n_jobs 2 --rla_list 1.0  --data_type video  --gpus 6,7
+
 ```
 
 ## 📊 支持的模型

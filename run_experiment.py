@@ -5,17 +5,21 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
+import os
+import math
 from pathlib import Path
 from tqdm import tqdm
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import logging
 from typing import Dict, List, Optional, Any
+import torch
+import torch.multiprocessing as tmp
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 from WSADBench.datasets.data_generator import DataGenerator
-from WSADBench.myutils import Utils, import_class 
+from WSADBench.myutils import Utils, import_class
 
 
 class ModelRegistry:
@@ -24,7 +28,6 @@ class ModelRegistry:
     @staticmethod
     def get_model_class(model_class_path: str):
         """根据模型类路径获取模型类"""
-        # 动态导入模型类
         return import_class(model_class_path)
 
     @staticmethod
@@ -44,43 +47,58 @@ class ModelRegistry:
             "Sultani": "WSADBench.baseline.Sultani.run.Sultani",
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
-            "IForest": "WSADBench.baseline.PyOD.PYOD",  # 默认PyOD的一个变体
+            "IForest": "WSADBench.baseline.PyOD.PYOD",
         }
-
         return default_model_map.get(model_name, None)
 
 
-class GeneralvideoRunner:
-    """通用模型在video数据集上的运行器"""
+class ExperimentRunner:
+    """通用实验运行器，支持video和tabular数据集"""
 
     def __init__(
         self,
         models: List[str],
+        data_type: str,
         n_jobs=1,
         output_dir=None,
         parameter_config_path=None,
         datasets=None,
         rla_list=None,
         seed_list=None,
+        gpu_list=None,
     ):
         """
         初始化运行器
 
         Args:
             models: 要运行的模型列表
+            data_type: 数据类型，'video' 或 'tabular'
             n_jobs: 并行作业数量，-1表示使用所有CPU核心
-            output_dir: 输出目录，默认为当前目录下的results文件夹
+            output_dir: 输出目录
             parameter_config_path: 参数配置文件路径
             datasets: 数据集列表
-            rla_list: 标注异常比例列表，默认使用预设值
-            seed_list: 随机种子列表，默认1-10
+            rla_list: 标注异常比例列表
+            seed_list: 随机种子列表
+            gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
+        if data_type not in ["video", "tabular"]:
+            raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
+
         self.models = models
+        self.data_type = data_type
         self.n_jobs = mp.cpu_count() if n_jobs == -1 else n_jobs
-        self.output_dir = Path(output_dir) if output_dir else Path("results")
+
+        # 初始化GPU管理器
+        self.gpu_manager = GPUManager(gpu_list, self.n_jobs)
+
+        # 设置默认输出目录和配置路径
+        default_output_dir = f"results/{data_type}"
+        default_config_path = f"WSADBench/model_configs/{data_type}"
+
+        self.output_dir = Path(output_dir) if output_dir else Path(default_output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
 
-        self.parameter_config_path = Path(parameter_config_path) if parameter_config_path else Path("model_configs")
+        self.parameter_config_path = Path(parameter_config_path) if parameter_config_path else Path(default_config_path)
         self.parameter_config_path.mkdir(exist_ok=True, parents=True)
 
         # 创建输出目录结构
@@ -103,8 +121,8 @@ class GeneralvideoRunner:
         self.data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
 
         # 实验参数
-        self.seed_list = seed_list if seed_list is not None else list(range(1, 11))  # 默认10个seeds
-        self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]  # 标注异常比例
+        self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
+        self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
 
         # 获取数据集列表
         if datasets is None:
@@ -119,7 +137,9 @@ class GeneralvideoRunner:
         self._save_model_stats()
 
         logger.info(f"初始化模型: {self.models}")
+        logger.info(f"数据类型: {self.data_type}")
         logger.info(f"并行作业数: {self.n_jobs}")
+        logger.info(f"GPU配置: {self.gpu_manager.get_gpu_assignment_summary()}")
         logger.info(f"输出目录: {self.output_dir.absolute()}")
         logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
         logger.info(f"数据集数量: {len(self.datasets)}")
@@ -131,11 +151,8 @@ class GeneralvideoRunner:
         model_params = {}
 
         for model_name in self.models:
-
             # 默认的模型类路径
             default_model_class_path = ModelRegistry.get_default_model_class_path(model_name)
-            if default_model_class_path is None:
-                raise ValueError(f"Unknown model: {model_name}. No default class path found.")
 
             # 初始化配置
             config = {"model_class": default_model_class_path, "parameters": {}}
@@ -155,7 +172,7 @@ class GeneralvideoRunner:
                             if "parameters" in yaml_config:
                                 config["parameters"].update(yaml_config["parameters"])
                             else:
-                                # 如果没有parameters字段，则将其他所有字段视为参数（向后兼容）
+                                # 向后兼容：将其他所有字段视为参数
                                 yaml_params = {k: v for k, v in yaml_config.items() if k != "model_class"}
                                 if yaml_params:
                                     config["parameters"].update(yaml_params)
@@ -167,6 +184,9 @@ class GeneralvideoRunner:
             else:
                 logger.info(f"未找到 {model_name} 的配置文件 {config_file}，使用默认配置")
                 logger.info(f"默认模型类: {config['model_class']}")
+
+            if config["model_class"] is None:
+                raise ValueError(f"Unknown model: {model_name} Please check the model name or configuration file.")
 
             model_params[model_name] = config
 
@@ -183,13 +203,13 @@ class GeneralvideoRunner:
                 "model_class": model_config.get("model_class", "Unknown"),
                 "parameters": model_config.get("parameters", {}),
                 "config_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "data_type": self.data_type,
             }
 
-            # 尝试计算参数大小（如果可能的话）
+            # 尝试计算参数大小
             try:
-                # 创建一个临时模型实例来计算参数
-                temp_model = self.create_model(model_name, seed=1)
-                # 优先使用模型的parameter_count方法
+                temp_model = self.create_model(self.model_params, model_name, seed=1)
+
                 if hasattr(temp_model, "parameter_count"):
                     try:
                         param_stats = temp_model.parameter_count()
@@ -201,7 +221,6 @@ class GeneralvideoRunner:
                             stats["parameter_count"] = "Unknown"
                     except Exception as e:
                         logger.warning(f"调用 {model_name} 的 parameter_count 方法失败: {e}")
-                        # 继续使用下面的备用方法
                         stats["parameter_count"] = "Unknown"
                 elif hasattr(temp_model, "get_params"):
                     # sklearn风格的模型
@@ -213,7 +232,6 @@ class GeneralvideoRunner:
                     state_dict = temp_model.state_dict()
                     total_params = sum(p.numel() for p in state_dict.values() if hasattr(p, "numel"))
                     stats["parameter_count"] = int(total_params)
-                    stats["parameter_size_mb"] = total_params * 4 / (1024 * 1024)  # 假设float32
                 else:
                     stats["parameter_count"] = "Unknown"
 
@@ -233,14 +251,20 @@ class GeneralvideoRunner:
             logger.info(f"保存 {model_name} 模型统计信息到: {stats_file}")
 
     def get_datasets(self):
-        datasets = self.data_generator.generate_dataset_list()["video"]
-        logger.info(f"找到 {len(datasets)} 个Video数据集")
+        """获取数据集列表, 这里用于没有指定数据集时获取最合适的默认测试数据集"""
+        if self.data_type == "video":
+            datasets = self.data_generator.generate_dataset_list()["video"]
+            logger.info(f"找到 {len(datasets)} 个Video数据集")
+        else:  # tabular
+            datasets = self.data_generator.generate_dataset_list()["classical"]
+            logger.info(f"找到 {len(datasets)} 个Classical数据集")
         return datasets
 
-    def create_model(self, model_name: str, seed: int, **kwargs):
+    @staticmethod
+    def create_model(model_params, model_name: str, seed: int, **kwargs):
         """创建模型实例"""
         # 获取模型配置
-        model_config = self.model_params.get(model_name, {})
+        model_config = model_params.get(model_name, {})
 
         # 获取模型类路径
         model_class_path = model_config.get("model_class")
@@ -254,147 +278,52 @@ class GeneralvideoRunner:
         model_params = model_config.get("parameters", {}).copy()
         model_params.update(kwargs)
 
-        # 特殊处理某些模型
-        base_class_name = model_class_path.split(".")[-1]
-        if base_class_name in ["PYOD", "supervised"]:
-            # 这些模型需要额外的model_name参数，这里设置调用的默认模型
-            if "model_name" not in model_params:
-                if base_class_name == "PYOD":
-                    model_params["model_name"] = "IForest"  # 默认使用IForest
-                elif base_class_name == "supervised":
-                    model_params["model_name"] = "LR"  # 默认使用LogisticRegression
-
         # 创建模型
         return model_class(seed=seed, **model_params)
 
-    def run_single_experiment(self, params):
-        """
-        运行单个实验
+    @staticmethod
+    def _process_video_data(data):
+        """处理video数据的特殊逻辑"""
+        # 训练数据reshape
+        _clips_num, _crops_num, _dim = data["X_train"].shape
+        data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
+        data["y_train"] = data["y_train"].repeat(_crops_num)
 
-        Args:
-            params: 实验参数 (model_name, dataset, rla, seed)
+        # 测试数据reshape
+        _clips_num, _crops_num, _dim = data["X_test"].shape
+        data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
 
-        Returns:
-            dict: 实验结果
-        """
-        model_name, dataset_name, rla, seed = params
+        return data, (_clips_num, _crops_num)
 
-        try:
-            # 设置数据生成器
-            self.data_generator.seed = seed
-            self.data_generator.dataset = dataset_name
+    @staticmethod
+    def _process_video_scores(scores, video_shape, data):
+        """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
+        _clips_num, _crops_num = video_shape
 
-            # 生成数据
-            data = self.data_generator.generator(
-                la=rla,
-                at_least_one_labeled=True,
-                la_shortage_mode="ignore",
-            )
+        # 平均每个crop, 获得每个clip的分数
+        scores = scores.reshape(_clips_num, _crops_num)
+        scores = np.mean(scores, axis=1)
 
-            # 检查数据有效性
-            if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-                logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla}) 没有标注异常，跳过")
-                return None
+        # 还原clip级别score为帧级别score
+        y_test_idx = data["y_test_idx"]
+        y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+        num_clip_frames = data["NUM_FRAMES"]
 
-            # 创建模型
-            model = self.create_model(model_name, seed)
+        frame_scores = []
+        frame_truth = []
+        for i in range(max(y_test_gt_idx) + 1):
+            select_gt = y_test_gt[y_test_gt_idx == i]
+            select_scores = scores[y_test_idx == i]
+            select_scores = select_scores.repeat(num_clip_frames)
+            common_length = min(len(select_gt), len(select_scores))
 
-            # 训练时间
-            start_time = time.time()
+            frame_scores.append(select_scores[:common_length])
+            frame_truth.append(select_gt[:common_length])
 
-            _clips_num, _crops_num, _dim = data["X_train"].shape
-            data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
-            data["y_train"] = data["y_train"].repeat(_crops_num)
+        frame_scores = np.concatenate(frame_scores, axis=0)
+        frame_truth = np.concatenate(frame_truth, axis=0)
 
-            model.fit(data["X_train"], data["y_train"])
-            fit_time = time.time() - start_time
-
-            _clips_num, _crops_num, _dim = data["X_test"].shape
-            data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
-
-            # 推理时间
-            start_time = time.time()
-            if hasattr(model, "predict_score"):
-                scores = model.predict_score(data["X_test"])
-            elif hasattr(model, "decision_function"):
-                scores = model.decision_function(data["X_test"])
-            elif hasattr(model, "predict_proba"):
-                proba = model.predict_proba(data["X_test"])
-                if proba.ndim == 1:
-                    scores = proba
-                else:
-                    scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
-            else:
-                raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
-
-            scores = scores.reshape(_clips_num, _crops_num)
-            scores = np.mean(scores, axis=1)  # 平均每个crop, 获得每个clip的分数
-
-            inference_time = time.time() - start_time
-
-            # 开始还原clip级别score为帧级别score
-            y_test_idx = data["y_test_idx"]
-            y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
-            num_clip_frames = data["NUM_FRAMES"]
-
-            frame_scores = []
-            frame_truth = []
-            for i in range(max(y_test_gt_idx) + 1):
-                select_gt = y_test_gt[y_test_gt_idx == i]
-                select_scores = scores[y_test_idx == i]
-                select_scores = select_scores.repeat(num_clip_frames)
-                common_length = min(len(select_gt), len(select_scores))
-
-                frame_scores.append(select_scores[:common_length])
-                frame_truth.append(select_gt[:common_length])
-
-            frame_scores = np.concatenate(frame_scores, axis=0)
-            frame_truth = np.concatenate(frame_truth, axis=0)
-            metrics = self.utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
-
-            result = {
-                "model": model_name,
-                "dataset": dataset_name,
-                "rla": rla,
-                "seed": seed,
-                "aucroc": metrics["aucroc"],
-                "aucpr": metrics["aucpr"],
-                "fit_time": fit_time,
-                "inference_time": inference_time,
-                "n_train": len(data["y_train"]),
-                "n_test": len(data["y_test"]),
-                "n_train_anomalies": np.sum(data["y_train"]),
-                "n_test_anomalies": np.sum(data["y_test"]),
-            }
-
-            logger.info(
-                f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla}): "
-                f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
-            )
-
-            # 清理内存
-            del model, data, scores
-            gc.collect()
-
-            return result
-
-        except Exception as e:
-            logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
-            return {
-                "model": model_name,
-                "dataset": dataset_name,
-                "rla": rla,
-                "seed": seed,
-                "aucroc": np.nan,
-                "aucpr": np.nan,
-                "fit_time": np.nan,
-                "inference_time": np.nan,
-                "n_train": np.nan,
-                "n_test": np.nan,
-                "n_train_anomalies": np.nan,
-                "n_test_anomalies": np.nan,
-                "error": str(e),
-            }
+        return frame_scores, frame_truth
 
     def _save_single_result(self, result):
         """保存单个实验结果"""
@@ -418,11 +347,7 @@ class GeneralvideoRunner:
         logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']}")
 
     def run_experiments(self):
-        """
-        运行所有实验
-
-        使用初始化时设置的数据集和RLA列表
-        """
+        """运行所有实验"""
         # 生成实验参数组合
         experiment_params = []
         for model_name in self.models:
@@ -437,22 +362,41 @@ class GeneralvideoRunner:
         logger.info(f"RLA设置: {self.rla_list}")
         logger.info(f"Seeds: {self.seed_list}")
 
+        # 准备传递给子进程的实验配置（不包含完整的runner）
+        experiment_config = {
+            "data_type": self.data_type,
+            "model_params": self.model_params,  # 传递模型参数配置
+        }
+
+        # 为每个任务分配GPU
+        experiment_params_with_gpu = []
+        for i, params in enumerate(experiment_params):
+            gpu_id = self.gpu_manager.get_gpu_for_task(i)
+            experiment_params_with_gpu.append((params, gpu_id, experiment_config))
+
         # 运行实验
         results = []
         if self.n_jobs == 1:
             # 串行运行
-            for params in tqdm(experiment_params, desc="运行实验"):
-                result = self.run_single_experiment(params)
+            for params in tqdm(experiment_params_with_gpu, desc="运行实验"):
+                # 即使串行也设置GPU
+                result = run_single_experiment_with_gpu(params)
                 if result is not None:
                     results.append(result)
                     self._save_single_result(result)
         else:
-            # 并行运行
-            with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
-                futures = {executor.submit(self.run_single_experiment, params): params for params in experiment_params}
+            # 并行运行 - 使用torch.multiprocessing
+            # 设置multiprocessing启动方法
+            if tmp.get_start_method(allow_none=True) != "spawn":
+                tmp.set_start_method("spawn", force=True)
 
-                for future in tqdm(as_completed(futures), total=len(futures), desc="运行实验"):
-                    result = future.result()
+            # 使用torch.multiprocessing.Pool执行
+            with tmp.Pool(self.n_jobs) as pool:
+                for result in tqdm(
+                    pool.imap(run_single_experiment_with_gpu, experiment_params_with_gpu),
+                    total=len(experiment_params_with_gpu),
+                    desc="运行实验",
+                ):
                     if result is not None:
                         results.append(result)
                         self._save_single_result(result)
@@ -467,25 +411,17 @@ class GeneralvideoRunner:
     def generate_summary(self):
         """生成汇总报告"""
         logger.info("开始生成汇总报告...")
-
         generate_summary_only(self.output_dir)
         logger.info("汇总报告生成完成。")
 
 
 def generate_summary_statistics(df, model_stats, summary_file):
-    """
-    通用的汇总统计函数
-
-    Args:
-        df: 实验结果DataFrame
-        model_stats: 模型统计信息字典
-        summary_file: 输出文件路径
-    """
-    # 按数据集汇总的效果
+    """通用的汇总统计函数"""
+    # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby("dataset")[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby("dataset")[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -493,11 +429,11 @@ def generate_summary_statistics(df, model_stats, summary_file):
         model_summary[f"{metric}_mean"] = df.groupby("model")[metric].mean()
         model_summary[f"{metric}_std"] = df.groupby("model")[metric].std()
 
-    # 按数据集汇总的时间
+    # 汇总的时间
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
-        dataset_time_summary[f"{metric}_mean"] = df.groupby("dataset")[metric].mean()
-        dataset_time_summary[f"{metric}_std"] = df.groupby("dataset")[metric].std()
+        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
+        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -512,7 +448,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
 
         # 按数据集汇总的效果
         for metric_name, metric_data in dataset_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"数据集_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"效果_{metric_name}")
 
         # 按模型汇总的效果
         for metric_name, metric_data in model_summary.items():
@@ -520,7 +456,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
 
         # 按数据集汇总的时间
         for metric_name, metric_data in dataset_time_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"数据集时间_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"时间_{metric_name}")
 
         # 按模型汇总的时间
         for metric_name, metric_data in model_time_summary.items():
@@ -535,12 +471,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
 
 
 def print_summary_statistics(df):
-    """
-    通用的打印汇总统计函数
-
-    Args:
-        df: 实验结果DataFrame
-    """
+    """通用的打印汇总统计函数"""
     logger.info("\n" + "=" * 50)
     logger.info("实验结果汇总统计")
     logger.info("=" * 50)
@@ -586,7 +517,7 @@ def generate_summary_only(output_dir):
                 with open(stats_file, "r", encoding="utf-8") as f:
                     model_stats[model_name] = json.load(f)
 
-            # 读取结果文件（新格式使用固定文件名）
+            # 读取结果文件
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
@@ -615,7 +546,7 @@ def generate_summary_only(output_dir):
     logger.info(f"合并了 {len(all_results)} 个结果文件，总共 {len(combined_df)} 个实验结果")
 
     # 生成汇总统计
-    summary_file = summary_dir / f"summary.xlsx"
+    summary_file = summary_dir / "summary.xlsx"
 
     # 使用通用汇总函数
     generate_summary_statistics(combined_df, model_stats, summary_file)
@@ -624,24 +555,208 @@ def generate_summary_only(output_dir):
     print_summary_statistics(combined_df)
 
 
+class GPUManager:
+    """GPU资源管理器"""
+
+    def __init__(self, gpu_list=None, n_jobs=1):
+        """
+        初始化GPU管理器
+
+        Args:
+            gpu_list: 指定使用的GPU列表，如[0,1,2]，None表示自动检测
+            n_jobs: 总并发任务数
+        """
+        self.available_gpus = self._detect_gpus(gpu_list)
+        self.n_jobs = n_jobs
+        self.num_gpus = len(self.available_gpus)
+
+        if self.num_gpus == 0:
+            logger.warning("未检测到可用GPU，将使用CPU模式")
+        else:
+            logger.info(f"检测到 {self.num_gpus} 个可用GPU: {self.available_gpus}")
+            logger.info(f"并发任务数: {n_jobs}, 每个GPU最多同时运行: {math.ceil(n_jobs / self.num_gpus)} 个任务")
+
+    def _detect_gpus(self, gpu_list):
+        """检测可用GPU"""
+        if gpu_list is not None:
+            # 用户指定GPU列表
+            if isinstance(gpu_list, str):
+                # 支持 "0,1,2" 格式
+                return [int(x.strip()) for x in gpu_list.split(",")]
+            elif isinstance(gpu_list, list):
+                return gpu_list
+            else:
+                return [gpu_list]
+        else:
+            # 自动检测所有可用GPU
+            if torch.cuda.is_available():
+                return list(range(torch.cuda.device_count()))
+            else:
+                return []
+
+    def get_gpu_for_task(self, task_index):
+        """获取任务应该使用的GPU ID"""
+        if self.num_gpus == 0:
+            return None
+        return self.available_gpus[task_index % self.num_gpus]
+
+    def get_gpu_assignment_summary(self):
+        """获取GPU分配摘要"""
+        if self.num_gpus == 0:
+            return "CPU模式"
+
+        tasks_per_gpu = {}
+        for i in range(self.n_jobs):
+            gpu_id = self.get_gpu_for_task(i)
+            tasks_per_gpu[gpu_id] = tasks_per_gpu.get(gpu_id, 0) + 1
+
+        return f"GPU分配: {dict(sorted(tasks_per_gpu.items()))}"
+
+
+def run_single_experiment_with_gpu(params_with_config):
+    """
+    带GPU分配的实验执行函数
+    """
+    params, gpu_id, experiment_config = params_with_config
+    model_name, dataset_name, rla, seed = params
+
+    # 设置GPU环境
+    if gpu_id is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla}) 分配到 GPU {gpu_id}")
+    else:
+        # CPU模式
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla}) 使用 CPU 模式")
+
+    try:
+        # 从配置中获取所需的组件
+        data_type = experiment_config["data_type"]
+        model_params = experiment_config["model_params"]
+        utils = Utils()
+
+        # 创建数据生成器
+        data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
+        data_generator.seed = seed
+        data_generator.dataset = dataset_name
+
+        # 生成数据
+        data = data_generator.generator(
+            la=rla,
+            at_least_one_labeled=True,
+            la_shortage_mode="ignore",
+        )
+
+        # 检查数据有效性
+        if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla}) 没有标注异常，跳过")
+            return None
+
+        # 创建模型
+        model = ExperimentRunner.create_model(model_params, model_name, seed=seed)
+
+        # 根据数据类型处理数据
+        data_shape = None
+        if data_type == "video":
+            data, data_shape = ExperimentRunner._process_video_data(data)
+
+        # 训练时间
+        start_time = time.time()
+        model.fit(data["X_train"], data["y_train"])
+        fit_time = time.time() - start_time
+
+        # 推理时间
+        start_time = time.time()
+        if hasattr(model, "predict_score"):
+            scores = model.predict_score(data["X_test"])
+        elif hasattr(model, "decision_function"):
+            scores = model.decision_function(data["X_test"])
+        elif hasattr(model, "predict_proba"):
+            proba = model.predict_proba(data["X_test"])
+            if proba.ndim == 1:
+                scores = proba
+            else:
+                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+        else:
+            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+
+        inference_time = time.time() - start_time
+
+        # 根据数据类型处理分数和计算指标
+        if data_type == "video":
+            frame_scores, frame_truth = ExperimentRunner._process_video_scores(scores, data_shape, data)
+            metrics = utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
+        else:  # tabular
+            metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
+
+        result = {
+            "model": model_name,
+            "dataset": dataset_name,
+            "rla": rla,
+            "seed": seed,
+            "aucroc": metrics["aucroc"],
+            "aucpr": metrics["aucpr"],
+            "fit_time": fit_time,
+            "inference_time": inference_time,
+            "n_train": len(data["y_train"]),
+            "n_test": len(data["y_test"]),
+            "n_train_anomalies": np.sum(data["y_train"]),
+            "n_test_anomalies": np.sum(data["y_test"]),
+            "data_type": data_type,
+        }
+
+        logger.info(
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla}): "
+            f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
+        )
+
+        # 清理内存
+        del model, data, scores
+        gc.collect()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
+        return {
+            "model": model_name,
+            "dataset": dataset_name,
+            "rla": rla,
+            "seed": seed,
+            "aucroc": np.nan,
+            "aucpr": np.nan,
+            "fit_time": np.nan,
+            "inference_time": np.nan,
+            "n_train": np.nan,
+            "n_test": np.nan,
+            "n_train_anomalies": np.nan,
+            "n_test_anomalies": np.nan,
+            "error": str(e),
+            "data_type": data_type,
+        }
+
+
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description="Anomaly Detection Experiments Runner")
+    parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
+
+    # 必需参数
+    parser.add_argument("--data_type", choices=["video", "tabular"], required=True, help="数据类型：video 或 tabular")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
+    # 可选参数
     parser.add_argument("--n_jobs", type=int, default=1, help="并行作业数量，-1表示使用所有CPU核心 (默认: 1)")
 
-    parser.add_argument("--output_dir", type=str, default="results/video", help="输出目录 (默认: results)")
+    parser.add_argument("--output_dir", type=str, help="输出目录 (默认: results/{data_type})")
 
     parser.add_argument(
         "--parameter_config_path",
         type=str,
-        default="WSADBench/model_configs/video",
-        help="模型参数配置文件目录 (默认: model_configs)",
+        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})",
     )
 
-    parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有video数据集")
+    parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有数据集")
 
     parser.add_argument(
         "--rla_list",
@@ -665,17 +780,25 @@ def main():
         help="仅进行汇总，不运行实验",
     )
 
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default=None,
+        help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
+    )
+
     args = parser.parse_args()
 
     # 如果只是要汇总
     if args.dry_summary:
         logger.info("仅进行汇总操作...")
-        generate_summary_only(args.output_dir)
+        output_dir = args.output_dir if args.output_dir else f"results/{args.data_type}"
+        generate_summary_only(output_dir)
         return
 
     # 如果不是dry_summary模式，则检查必需的参数
     if not args.models:
-        parser.error("--models is empty. Please specify at least one model.")
+        parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
     # 预处理RLA列表
     _rla_list = []
@@ -686,19 +809,29 @@ def main():
             _rla_list.append(rla)
     args.rla_list = _rla_list
 
+    # 处理GPU参数
+    gpu_list = None
+    if args.gpus is not None:
+        if args.gpus.lower() == "auto":
+            gpu_list = None  # 自动检测
+        else:
+            gpu_list = args.gpus  # 用户指定
+
     # 创建运行器
-    runner = GeneralvideoRunner(
+    runner = ExperimentRunner(
         models=args.models,
+        data_type=args.data_type,
         n_jobs=args.n_jobs,
         output_dir=args.output_dir,
         parameter_config_path=args.parameter_config_path,
         datasets=args.datasets,
         rla_list=args.rla_list,
         seed_list=args.seed_list,
+        gpu_list=gpu_list,
     )
 
     # 运行实验
-    logger.info(f"开始运行通用实验，模型: {args.models}")
+    logger.info(f"开始运行{args.data_type}实验，模型: {args.models}")
     start_time = time.time()
 
     results = runner.run_experiments()
@@ -714,30 +847,39 @@ if __name__ == "__main__":
 """
 使用示例:
 
-# 运行RoSAS模型
-python run_general_video.py --models RoSAS --n_jobs 4
+# 运行video实验，自动检测GPU
+python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus auto
 
-# 运行多个模型
-python run_general_video.py --models RoSAS AABiGAN --n_jobs 8
+# 运行tabular实验，指定使用GPU 0,1
+python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs 8 --gpus 0,1
+
+# 使用所有GPU，高并发任务
+python run_experiment.py --data_type video --models Sultani --n_jobs 16 --gpus auto
+
+# 仅使用特定GPU
+python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus 0,2
+
+# CPU模式（不使用GPU）
+python run_experiment.py --data_type tabular --models RoSAS --n_jobs 4
 
 # 指定特定数据集和RLA
-python run_general_video.py --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0
+python run_experiment.py --data_type video --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0 --gpus auto
 
 # 指定随机种子
-python run_general_video.py --models RoSAS --seed_list 1 2 3 4 5
+python run_experiment.py --data_type tabular --models RoSAS --seed_list 1 2 3 4 5 --gpus 0,1
 
 # 使用自定义配置目录
-python run_general_video.py --models RoSAS --parameter_config_path ./my_configs
+python run_experiment.py --data_type video --models RoSAS --parameter_config_path ./my_configs --gpus auto
 
-# 并行运行，使用所有CPU核心
-python run_general_video.py --models RoSAS AABiGAN --n_jobs -1
+# 并行运行，使用所有CPU核心和GPU
+python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs -1 --gpus auto
 
-# 仅进行汇总（从已有的detail目录生成summary，不需要指定models参数）
-python run_general_video.py --dry_summary
+# 仅进行汇总（从已有的detail目录生成summary）
+python run_experiment.py --data_type video --dry_summary
 
-# 指定输出目录进行汇总
-python run_general_video.py --dry_summary --output_dir ./results
+# GPU超分：8个任务使用2个GPU（每个GPU运行4个任务）
+python run_experiment.py --data_type video --models Sultani --n_jobs 8 --gpus 0,1
 
 # 快速测试
-python run_general_video.py --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1
+python run_experiment.py --data_type video --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1 --gpus 0
 """

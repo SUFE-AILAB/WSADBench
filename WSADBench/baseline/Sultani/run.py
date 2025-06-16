@@ -33,10 +33,10 @@ class Sultani:
         input_dim: int = 2048,
         dropout: float = 0.6,
         # 训练参数
-        epochs: int = 100,
-        batch_size: int = 1,
+        epochs: int = 75,
+        batch_size: int = 30,
         learning_rate: float = 0.001,
-        weight_decay: float = 0.001,
+        weight_decay: float = 0.0010000000474974513,
         # 损失权重
         sparsity_weight: float = 0.00008,
         smoothness_weight: float = 0.00008,
