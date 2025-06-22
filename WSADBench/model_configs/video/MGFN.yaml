@@ -1,0 +1,17 @@
+# RoSAS模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.MGFN.run.MGFN
+
+# 模型参数
+parameters:
+  channels: 2048
+  dropout: 0.7
+  epochs: 5
+  batch_size: 16
+  learning_rate: 0.001
+  weight_decay:  0.0005
+  depths: [3, 3, 2]  # 不写tuple，写list
+  mgfn_types: ['gb', 'fb', 'fb']
+  mag_ratio: 0.1

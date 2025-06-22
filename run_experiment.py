@@ -45,6 +45,7 @@ class ModelRegistry:
             "PReNet": "WSADBench.baseline.PReNet.run.PReNet",
             "REPEN": "WSADBench.baseline.REPEN.run.REPEN",
             "Sultani": "WSADBench.baseline.Sultani.run.Sultani",
+            "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
@@ -737,6 +738,17 @@ def run_single_experiment_with_gpu(params_with_config):
 
 
 def main():
+    """解开线程限制"""
+    # 解开限制
+    import resource
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    print(f"原始限制: soft={soft}, hard={hard}")
+    # 设置为 2048（注意不能超过 hard limit，否则会报错）
+    resource.setrlimit(resource.RLIMIT_NOFILE, (2048, hard))
+    # 验证修改结果
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    print(f"修改后: soft={soft}, hard={hard}")
+
     """主函数"""
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
