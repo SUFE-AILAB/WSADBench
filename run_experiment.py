@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 from WSADBench.datasets.data_generator import DataGenerator
 from WSADBench.myutils import Utils, import_class
+import resource
+import inspect
 
 
 class ModelRegistry:
@@ -49,6 +51,7 @@ class ModelRegistry:
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
+            "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
         }
         return default_model_map.get(model_name, None)
 
@@ -193,7 +196,7 @@ class ExperimentRunner:
 
         return model_params
 
-    def _save_model_stats(self):
+    def _save_model_stats(self):  # TODO: 将这部分统计修改为拟合完毕之后再保存
         """保存模型参数统计信息"""
         for model_name in self.models:
             model_config = self.model_params.get(model_name, {})
@@ -262,7 +265,7 @@ class ExperimentRunner:
         return datasets
 
     @staticmethod
-    def create_model(model_params, model_name: str, seed: int, **kwargs):
+    def create_model(model_params, model_name: str, seed: int, feature_shape: tuple = None, **kwargs):
         """创建模型实例"""
         # 获取模型配置
         model_config = model_params.get(model_name, {})
@@ -279,6 +282,11 @@ class ExperimentRunner:
         model_params = model_config.get("parameters", {}).copy()
         model_params.update(kwargs)
 
+        # 如果模型的 __init__ 方法有 input_dim 参数，且 feature_shape 不为 None，则更新 input_dim
+        init_signature = inspect.signature(model_class.__init__)
+        if "input_dim" in init_signature.parameters and feature_shape is not None:
+            model_params["input_dim"] = feature_shape[-1]
+
         # 创建模型
         return model_class(seed=seed, **model_params)
 
@@ -290,9 +298,17 @@ class ExperimentRunner:
         data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
         data["y_train"] = data["y_train"].repeat(_crops_num)
 
+        # 保留视频ID信息并扩展到crops
+        if "vid_train" in data:
+            data["vid_train"] = data["vid_train"].repeat(_crops_num)
+
         # 测试数据reshape
         _clips_num, _crops_num, _dim = data["X_test"].shape
         data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
+
+        # 保留视频ID信息并扩展到crops
+        if "vid_test" in data:
+            data["vid_test"] = data["vid_test"].repeat(_crops_num)
 
         return data, (_clips_num, _crops_num)
 
@@ -654,7 +670,8 @@ def run_single_experiment_with_gpu(params_with_config):
             return None
 
         # 创建模型
-        model = ExperimentRunner.create_model(model_params, model_name, seed=seed)
+        feature_shape = data["X_train"].shape
+        model = ExperimentRunner.create_model(model_params, model_name, seed=seed, feature_shape=feature_shape)
 
         # 根据数据类型处理数据
         data_shape = None
@@ -740,7 +757,6 @@ def run_single_experiment_with_gpu(params_with_config):
 def main():
     """解开线程限制"""
     # 解开限制
-    import resource
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     print(f"原始限制: soft={soft}, hard={hard}")
     # 设置为 2048（注意不能超过 hard limit，否则会报错）
