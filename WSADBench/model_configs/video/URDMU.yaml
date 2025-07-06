@@ -1,0 +1,20 @@
+# RoSAS模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.URDMU.run.URDMU
+
+# 模型参数
+parameters:
+  # 训练参数
+  dropout: 0.6
+  epochs: 1
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay:  0.00005
+  # 损失权重
+
+  input_size: 2048
+  flag: "Train"
+  a_nums: 60
+  n_nums: 60

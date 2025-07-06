@@ -46,6 +46,8 @@ class ModelRegistry:
             "REPEN": "WSADBench.baseline.REPEN.run.REPEN",
             "Sultani": "WSADBench.baseline.Sultani.run.Sultani",
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
+            "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
+            "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
