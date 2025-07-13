@@ -680,17 +680,32 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 训练时间
         start_time = time.time()
-        model.fit(data["X_train"], data["y_train"])
+        train_input = {
+            "X": data["X_train"],
+            "y": data["y_train"],
+        }
+        test_input = {
+            "X": data["X_test"],
+        }
+        if "vid_info" in inspect.signature(model.fit).parameters:
+            train_input["vid_info"] = data.get("vid_train", None)
+            # test_input["vid_info"] = data.get("vid_test", None)
+        if "crops_num" in inspect.signature(model.fit).parameters:
+            train_input["crops_num"] = data_shape[1]
+            # test_input["crops_num"] = data_shape[1]
+        
+        model.fit(**train_input)
+        
         fit_time = time.time() - start_time
 
         # 推理时间
         start_time = time.time()
         if hasattr(model, "predict_score"):
-            scores = model.predict_score(data["X_test"])
+            scores = model.predict_score(**test_input)
         elif hasattr(model, "decision_function"):
-            scores = model.decision_function(data["X_test"])
+            scores = model.decision_function(**test_input)
         elif hasattr(model, "predict_proba"):
-            proba = model.predict_proba(data["X_test"])
+            proba = model.predict_proba(**test_input)
             if proba.ndim == 1:
                 scores = proba
             else:
