@@ -263,7 +263,11 @@ class DataGenerator:
         else:
 
             for kind, dataset_list in self.all_dataset_list.items():
-                real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
+                if kind in ["video"]:
+                    real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
+                else:
+                    real_ds_name = self.dataset
+                    
                 if real_ds_name not in dataset_list:
                     continue
 
@@ -428,7 +432,7 @@ class DataGenerator:
             "y_test": y_test,
         }
 
-        if data is not None:
+        if data is not None and isinstance(data, dict):
             data.update(result)
             result = data
         return result

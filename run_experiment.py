@@ -72,6 +72,7 @@ class ExperimentRunner:
         rla_list=None,
         seed_list=None,
         gpu_list=None,
+        DEBUG=False,
     ):
         """
         初始化运行器
@@ -87,6 +88,7 @@ class ExperimentRunner:
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
+        self.DEBUG = DEBUG
         if data_type not in ["video", "tabular"]:
             raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
 
@@ -391,7 +393,7 @@ class ExperimentRunner:
         experiment_params_with_gpu = []
         for i, params in enumerate(experiment_params):
             gpu_id = self.gpu_manager.get_gpu_for_task(i)
-            experiment_params_with_gpu.append((params, gpu_id, experiment_config))
+            experiment_params_with_gpu.append((params, gpu_id, experiment_config, self.DEBUG))
 
         # 运行实验
         results = []
@@ -636,7 +638,7 @@ def run_single_experiment_with_gpu(params_with_config):
     """
     带GPU分配的实验执行函数
     """
-    params, gpu_id, experiment_config = params_with_config
+    params, gpu_id, experiment_config, DEBUG = params_with_config
     model_name, dataset_name, rla, seed = params
 
     # 设置GPU环境
@@ -682,17 +684,45 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 训练时间
         start_time = time.time()
-        train_input = {
-            "X": data["X_train"],
-            "y": data["y_train"],
-        }
-        test_input = {
-            "X": data["X_test"],
-        }
-        if "vid_info" in inspect.signature(model.fit).parameters:
+        def has_param(func, param_name):
+            """检查函数是否有指定参数"""
+            return param_name in inspect.signature(func).parameters
+        
+        
+        train_input = {}
+        if has_param(model.fit, "X"):
+            train_input["X"] = data["X_train"]
+        if has_param(model.fit, "y"):
+            train_input["y"] = data["y_train"]
+        if has_param(model.fit, "X_train"):
+            train_input["X_train"] = data["X_train"]
+        if has_param(model.fit, "y_train"):
+            train_input["y_train"] = data["y_train"]
+        if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
-        if "crops_num" in inspect.signature(model.fit).parameters:
-            train_input["crops_num"] = data_shape[1]
+        if has_param(model.fit, "crops_num"):
+            train_input["crops_num"] = data_shape[1] if data_shape else None
+        
+        pred_func = None
+        if hasattr(model, "predict_score"):
+            pred_func = model.predict_score
+        elif hasattr(model, "decision_function"):
+            pred_func = model.decision_function
+        elif hasattr(model, "predict_proba"):
+            pred_func = model.predict_proba
+        else:
+            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+
+
+        test_input = {}
+        if has_param(pred_func, "X"):
+            test_input["X"] = data["X_test"]
+        if has_param(pred_func, "X_test"):
+            test_input["X_test"] = data["X_test"]
+        if has_param(pred_func, "vid_info"):
+            test_input["vid_info"] = data.get("vid_test", None)
+        if has_param(pred_func, "crops_num"):
+            test_input["crops_num"] = data_shape[1] if data_shape else None
         
         model.fit(**train_input)
         
@@ -700,18 +730,11 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 推理时间
         start_time = time.time()
-        if hasattr(model, "predict_score"):
-            scores = model.predict_score(**test_input)
-        elif hasattr(model, "decision_function"):
-            scores = model.decision_function(**test_input)
-        elif hasattr(model, "predict_proba"):
-            proba = model.predict_proba(**test_input)
-            if proba.ndim == 1:
-                scores = proba
-            else:
-                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+        proba = pred_func(**test_input)
+        if proba.ndim == 1:
+            scores = proba
         else:
-            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+            scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
 
         inference_time = time.time() - start_time
 
@@ -751,6 +774,8 @@ def run_single_experiment_with_gpu(params_with_config):
         return result
 
     except Exception as e:
+        if DEBUG:
+            raise e
         logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
         return {
             "model": model_name,
@@ -831,6 +856,12 @@ def main():
         help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
     )
 
+    parser.add_argument(
+        "--DEBUG",
+        action="store_true",
+        help="开启调试模式，捕获所有异常并打印详细错误信息",
+    )
+
     args = parser.parse_args()
 
     # 如果只是要汇总
@@ -872,6 +903,7 @@ def main():
         rla_list=args.rla_list,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
+        DEBUG=args.DEBUG,
     )
 
     # 运行实验

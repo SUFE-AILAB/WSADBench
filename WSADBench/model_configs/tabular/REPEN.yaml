@@ -7,7 +7,7 @@ model_class: WSADBench.baseline.AABiGAN.run.AABiGAN
 # 模型参数
 parameters:
   # 训练参数
-  epochs: 100
+  epochs: 300
   batch_size: 64
   
   # 学习率

@@ -9,16 +9,16 @@ parameters:
   # 训练参数
   epochs: 200
   batch_size: 64
-  lr: 0.001
+  lr: 0.005
   
   # 模型架构参数
-  n_emb: 256
+  n_emb: 128
   margin: 2.0
-alpha: 0.5
-beta: 1.0
-T: 2
-k: 2
+  alpha: 0.5
+  beta: 1.0
+  T: 2
+  k: 2
 
-# 其他参数
-score_loss: "smooth"
-verbose: true
+  # 其他参数
+  score_loss: "smooth"
+  verbose: true

@@ -1,9 +1,12 @@
 classical:
   DATA_DIR: 'WSADBench/datasets/Classical/'
+  END_WITH: ".npz"
 cv:
   DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18/'
+  END_WITH: ".npz"
 nlp:
   DATA_DIR: 'WSADBench/datasets/NLP_by_BERT/'
+  END_WITH: ".npz"
 video:
   UCF_Crime:
       MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.UCFCrimeManager'
