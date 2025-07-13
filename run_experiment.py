@@ -691,10 +691,8 @@ def run_single_experiment_with_gpu(params_with_config):
         }
         if "vid_info" in inspect.signature(model.fit).parameters:
             train_input["vid_info"] = data.get("vid_train", None)
-            # test_input["vid_info"] = data.get("vid_test", None)
         if "crops_num" in inspect.signature(model.fit).parameters:
             train_input["crops_num"] = data_shape[1]
-            # test_input["crops_num"] = data_shape[1]
         
         model.fit(**train_input)
         
@@ -737,6 +735,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test": len(data["y_test"]),
             "n_train_anomalies": np.sum(data["y_train"]),
             "n_test_anomalies": np.sum(data["y_test"]),
+            "error": "",
             "data_type": data_type,
         }
 
@@ -766,7 +765,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test": np.nan,
             "n_train_anomalies": np.nan,
             "n_test_anomalies": np.nan,
-            "error": str(e),
+            "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
         }
 

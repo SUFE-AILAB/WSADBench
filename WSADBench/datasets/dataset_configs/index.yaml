@@ -14,3 +14,4 @@ video:
       MODALITY: RGB
       MODALITY_DIR: 'all_rgbs'
       NUM_FRAMES: 16
+      SEGMENTATION_DIR: 'segmentation'

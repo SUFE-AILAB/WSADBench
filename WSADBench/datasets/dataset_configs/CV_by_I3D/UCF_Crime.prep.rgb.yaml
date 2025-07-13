@@ -15,5 +15,7 @@ PREPROCESS:
     COPY:
         - ['splits', 'splits']
         - ['UCF_Annotation.txt', 'UCF_Annotation.txt']
-
-
+    SEGMENTATION:
+        SEGMENTATION_DIR: 'segmentation'
+        EXCLUDE_SEGMENT_LIST: 
+            - Testing_Normal_Videos_Anomaly
