@@ -38,8 +38,8 @@ class UCFCrimeManager:
             )
 
         def load_train_split(files):
-            arrs, ys = [], []
-            for file_name in tqdm(files, desc="Loading training data"):
+            arrs, ys, vid_ids = [], [], []
+            for video_idx, file_name in enumerate(tqdm(files, desc="Loading training data")):
                 file_path = self.processed_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
                 if not file_path.exists():
@@ -53,16 +53,19 @@ class UCFCrimeManager:
 
                 label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
+                vid_id = np.full(len(arr), video_idx, dtype=np.int32)
 
                 arrs.append(arr)
                 ys.append(y)
+                vid_ids.append(vid_id)
             return {
                 "X_train": np.concatenate(arrs, axis=0),
                 "y_train": np.concatenate(ys, axis=0),
+                "vid_train": np.concatenate(vid_ids, axis=0),
             }
 
         def load_test_split(files):
-            arrs, ys, y_gt, y_idx, y_gt_idx = [], [], [], [], []
+            arrs, ys, y_gt, y_idx, y_gt_idx, vid_ids = [], [], [], [], [], []
             for i, file_name in enumerate(tqdm(files, desc="Loading test data")):
                 file_path = self.processed_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
@@ -75,6 +78,7 @@ class UCFCrimeManager:
 
                 label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
+                vid_id = np.full(len(arr), i, dtype=np.int32)  # 测试集中视频ID就是文件索引
 
                 name = file_path.stem
                 truth = ground_truth_dict[name]["truth"]
@@ -85,12 +89,14 @@ class UCFCrimeManager:
                 y_gt.append(truth)
                 y_idx.append(idx)
                 y_gt_idx.append(gt_idx)
+                vid_ids.append(vid_id)
             return {
                 "X_test": np.concatenate(arrs, axis=0),
                 "y_test": np.concatenate(ys, axis=0),
                 "y_test_gt": np.concatenate(y_gt, axis=0),
                 "y_test_idx": np.concatenate(y_idx, axis=0),
                 "y_test_gt_idx": np.concatenate(y_gt_idx, axis=0),
+                "vid_test": np.concatenate(vid_ids, axis=0),
             }
 
         # 主体逻辑
@@ -135,7 +141,7 @@ class UCFCrimeManager:
 
 if __name__ == "__main__":
     ds_config = {
-        "working_dir": "/data/coding/yx/WSADBench/",
+        "working_dir": "/data/coding/wsad/yx/WSADBench/",
         "DATA_DIR": "WSADBench/datasets/CV_by_I3D/UCF_Crime/",
         "SPLIT_DIR": "splits",
         "SPLIT_FILE": {"train": "Anomaly_Train.txt", "test": "Anomaly_Test.txt"},
@@ -149,5 +155,14 @@ if __name__ == "__main__":
     data = manager.load_data(limit_clips=32)
     # data = manager.load_data(num_segments=200)
     print(data.keys())
-    print(data["X_train"].shape, data["y_train"].shape)
-    print(data["X_test"].shape, data["y_test"].shape)
+    print(data["X_train"].shape, data["y_train"].shape, data["vid_train"].shape)
+    print(data["X_test"].shape, data["y_test"].shape, data["vid_test"].shape)
+    
+    # 显示视频ID分布示例
+    print("\n训练集视频ID分布示例:")
+    print("vid_train前20个:", data["vid_train"][:20])
+    print("训练集包含视频数量:", len(np.unique(data["vid_train"])))
+    
+    print("\n测试集视频ID分布示例:")
+    print("vid_test前20个:", data["vid_test"][:20])
+    print("测试集包含视频数量:", len(np.unique(data["vid_test"])))
