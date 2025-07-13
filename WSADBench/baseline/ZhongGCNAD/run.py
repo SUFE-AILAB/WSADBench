@@ -15,6 +15,7 @@ from torch.nn.parameter import Parameter
 from math import sqrt
 import torch.nn.functional as F
 from WSADBench.myutils import Utils
+import gc
 
 # 配置日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -282,6 +283,12 @@ class ZhongGCNAD:
 
         return sampled_features, adj_hat, sampled_scores, high_conf_indices_in_graph, sample_index
 
+    def _clear_gpu_memory(self):
+        """清理GPU内存"""
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
     def _train_classifier(self, X: np.ndarray, y: np.ndarray, epochs: int):
         """内部函数：训练或再训练动作分类器头部"""
         if self.action_classifier is None:
@@ -365,11 +372,11 @@ class ZhongGCNAD:
                 optimizer.step()
                 total_loss += loss.item()
 
-                # 更新历史平均预测
+                # 更新历史平均预测并立即移回CPU
                 with torch.no_grad():
-                    new_mean_pred_full = vid_mean_preds[vid].clone()
-                    new_mean_pred_full[sample_index] = 0.5 * new_mean_pred_full[sample_index] + 0.5 * torch.sigmoid(output).detach().cpu()
-                    vid_mean_preds[vid] = new_mean_pred_full
+                    new_mean_pred_full = vid_mean_preds[vid].to(self.device)
+                    new_mean_pred_full[sample_index] = 0.5 * new_mean_pred_full[sample_index] + 0.5 * torch.sigmoid(output).detach()
+                    vid_mean_preds[vid] = new_mean_pred_full.cpu()
 
             if self.verbose:
                 logger.info(f"  GCN Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(loader):.4f}")
@@ -411,13 +418,33 @@ class ZhongGCNAD:
                 logger.info("  步骤1: 生成当前软标签和方差...")
             self.action_classifier.eval()
             with torch.no_grad():
-                # 对所有crop进行预测以计算方差
-                all_preds = self.action_classifier(torch.FloatTensor(X).to(self.device))
-                preds_reshaped = torch.sigmoid(all_preds).reshape(clips_num, crops_num)
+                # 分批处理以避免内存溢出
+                soft_labels_list = []
+                variances_list = []
+                batch_size_for_inference = min(self.batch_size, clips_num)
                 
-                # 计算每个clip的平均预测(软标签)和方差
-                soft_labels = preds_reshaped.mean(dim=1).cpu().numpy().flatten()
-                variances = torch.var(preds_reshaped, dim=1).cpu().numpy().flatten()
+                for start_idx in range(0, len(X), batch_size_for_inference * crops_num):
+                    end_idx = min(start_idx + batch_size_for_inference * crops_num, len(X))
+                    batch_X = X[start_idx:end_idx]
+                    
+                    # 对当前批次的所有crop进行预测
+                    batch_preds = self.action_classifier(torch.FloatTensor(batch_X).to(self.device))
+                    batch_clips = (end_idx - start_idx) // crops_num
+                    batch_preds_reshaped = torch.sigmoid(batch_preds).reshape(batch_clips, crops_num)
+                    
+                    # 计算当前批次的平均预测和方差
+                    batch_soft_labels = batch_preds_reshaped.mean(dim=1).cpu().numpy()
+                    batch_variances = torch.var(batch_preds_reshaped, dim=1).cpu().numpy()
+                    
+                    soft_labels_list.append(batch_soft_labels)
+                    variances_list.append(batch_variances)
+                    
+                soft_labels = np.concatenate(soft_labels_list).flatten()
+                variances = np.concatenate(variances_list).flatten()
+                
+                # 清理列表
+                del soft_labels_list, variances_list
+                self._clear_gpu_memory()
             
             # 2. 训练GCN清洁器
             if self.verbose:
@@ -442,6 +469,8 @@ class ZhongGCNAD:
                     new_labels_list.extend(cleaned_scores)
             
             current_labels = np.array(new_labels_list)
+            del new_labels_list, gcn_train_dataset, inference_loader
+            self._clear_gpu_memory()
             
             # 4. 使用清洁后的标签再训练分类器
             if self.verbose:
@@ -451,6 +480,8 @@ class ZhongGCNAD:
         self.fitted = True
         if self.verbose:
             logger.info("\n--- 训练完成 ---")
+        # 最终清理
+        self._clear_gpu_memory()
         return self
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
