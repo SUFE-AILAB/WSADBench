@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 from WSADBench.datasets.data_generator import DataGenerator
 from WSADBench.myutils import Utils, import_class
+import resource
+import inspect
 
 
 class ModelRegistry:
@@ -45,9 +47,13 @@ class ModelRegistry:
             "PReNet": "WSADBench.baseline.PReNet.run.PReNet",
             "REPEN": "WSADBench.baseline.REPEN.run.REPEN",
             "Sultani": "WSADBench.baseline.Sultani.run.Sultani",
+            "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
+            "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
+            "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
+            "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
         }
         return default_model_map.get(model_name, None)
 
@@ -66,6 +72,7 @@ class ExperimentRunner:
         rla_list=None,
         seed_list=None,
         gpu_list=None,
+        DEBUG=False,
     ):
         """
         初始化运行器
@@ -81,6 +88,7 @@ class ExperimentRunner:
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
+        self.DEBUG = DEBUG
         if data_type not in ["video", "tabular"]:
             raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
 
@@ -192,7 +200,7 @@ class ExperimentRunner:
 
         return model_params
 
-    def _save_model_stats(self):
+    def _save_model_stats(self):  # TODO: 将这部分统计修改为拟合完毕之后再保存
         """保存模型参数统计信息"""
         for model_name in self.models:
             model_config = self.model_params.get(model_name, {})
@@ -261,7 +269,7 @@ class ExperimentRunner:
         return datasets
 
     @staticmethod
-    def create_model(model_params, model_name: str, seed: int, **kwargs):
+    def create_model(model_params, model_name: str, seed: int, feature_shape: tuple = None, **kwargs):
         """创建模型实例"""
         # 获取模型配置
         model_config = model_params.get(model_name, {})
@@ -278,6 +286,11 @@ class ExperimentRunner:
         model_params = model_config.get("parameters", {}).copy()
         model_params.update(kwargs)
 
+        # 如果模型的 __init__ 方法有 input_dim 参数，且 feature_shape 不为 None，则更新 input_dim
+        init_signature = inspect.signature(model_class.__init__)
+        if "input_dim" in init_signature.parameters and feature_shape is not None:
+            model_params["input_dim"] = feature_shape[-1]
+
         # 创建模型
         return model_class(seed=seed, **model_params)
 
@@ -289,9 +302,17 @@ class ExperimentRunner:
         data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
         data["y_train"] = data["y_train"].repeat(_crops_num)
 
+        # 保留视频ID信息并扩展到crops
+        if "vid_train" in data:
+            data["vid_train"] = data["vid_train"].repeat(_crops_num)
+
         # 测试数据reshape
         _clips_num, _crops_num, _dim = data["X_test"].shape
         data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
+
+        # 保留视频ID信息并扩展到crops
+        if "vid_test" in data:
+            data["vid_test"] = data["vid_test"].repeat(_crops_num)
 
         return data, (_clips_num, _crops_num)
 
@@ -372,7 +393,7 @@ class ExperimentRunner:
         experiment_params_with_gpu = []
         for i, params in enumerate(experiment_params):
             gpu_id = self.gpu_manager.get_gpu_for_task(i)
-            experiment_params_with_gpu.append((params, gpu_id, experiment_config))
+            experiment_params_with_gpu.append((params, gpu_id, experiment_config, self.DEBUG))
 
         # 运行实验
         results = []
@@ -617,7 +638,7 @@ def run_single_experiment_with_gpu(params_with_config):
     """
     带GPU分配的实验执行函数
     """
-    params, gpu_id, experiment_config = params_with_config
+    params, gpu_id, experiment_config, DEBUG = params_with_config
     model_name, dataset_name, rla, seed = params
 
     # 设置GPU环境
@@ -653,7 +674,8 @@ def run_single_experiment_with_gpu(params_with_config):
             return None
 
         # 创建模型
-        model = ExperimentRunner.create_model(model_params, model_name, seed=seed)
+        feature_shape = data["X_train"].shape
+        model = ExperimentRunner.create_model(model_params, model_name, seed=seed, feature_shape=feature_shape)
 
         # 根据数据类型处理数据
         data_shape = None
@@ -662,23 +684,65 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 训练时间
         start_time = time.time()
-        model.fit(data["X_train"], data["y_train"])
+        def has_param(func, param_name):
+            """检查函数是否有指定参数"""
+            return param_name in inspect.signature(func).parameters
+        
+        
+        train_input = {}
+        if has_param(model.fit, "X"):
+            train_input["X"] = data["X_train"]
+        if has_param(model.fit, "y"):
+            train_input["y"] = data["y_train"]
+        if has_param(model.fit, "X_train"):
+            train_input["X_train"] = data["X_train"]
+        if has_param(model.fit, "y_train"):
+            train_input["y_train"] = data["y_train"]
+        if has_param(model.fit, "vid_info"):
+            train_input["vid_info"] = data.get("vid_train", None)
+        if has_param(model.fit, "crops_num"):
+            train_input["crops_num"] = data_shape[1] if data_shape else None
+        if has_param(model.fit, "vid_kind"):
+            train_input["vid_kind"] = data.get("vid_kind_train", None)
+        if has_param(model.fit, "vid_source_clips_num"):
+            train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
+        
+        pred_func = None
+        if hasattr(model, "predict_score"):
+            pred_func = model.predict_score
+        elif hasattr(model, "decision_function"):
+            pred_func = model.decision_function
+        elif hasattr(model, "predict_proba"):
+            pred_func = model.predict_proba
+        else:
+            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+
+
+        test_input = {}
+        if has_param(pred_func, "X"):
+            test_input["X"] = data["X_test"]
+        if has_param(pred_func, "X_test"):
+            test_input["X_test"] = data["X_test"]
+        if has_param(pred_func, "vid_info"):
+            test_input["vid_info"] = data.get("vid_test", None)
+        if has_param(pred_func, "crops_num"):
+            test_input["crops_num"] = data_shape[1] if data_shape else None
+        if has_param(pred_func, "vid_kind"):
+            test_input["vid_kind"] = data.get("vid_kind_test", None)
+        if has_param(pred_func, "vid_source_clips_num"):
+            test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
+        
+        model.fit(**train_input)
+        
         fit_time = time.time() - start_time
 
         # 推理时间
         start_time = time.time()
-        if hasattr(model, "predict_score"):
-            scores = model.predict_score(data["X_test"])
-        elif hasattr(model, "decision_function"):
-            scores = model.decision_function(data["X_test"])
-        elif hasattr(model, "predict_proba"):
-            proba = model.predict_proba(data["X_test"])
-            if proba.ndim == 1:
-                scores = proba
-            else:
-                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+        proba = pred_func(**test_input)
+        if proba.ndim == 1:
+            scores = proba
         else:
-            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+            scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
 
         inference_time = time.time() - start_time
 
@@ -702,6 +766,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test": len(data["y_test"]),
             "n_train_anomalies": np.sum(data["y_train"]),
             "n_test_anomalies": np.sum(data["y_test"]),
+            "error": "",
             "data_type": data_type,
         }
 
@@ -717,6 +782,8 @@ def run_single_experiment_with_gpu(params_with_config):
         return result
 
     except Exception as e:
+        if DEBUG:
+            raise e
         logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
         return {
             "model": model_name,
@@ -731,12 +798,22 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test": np.nan,
             "n_train_anomalies": np.nan,
             "n_test_anomalies": np.nan,
-            "error": str(e),
+            "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
         }
 
 
 def main():
+    """解开线程限制"""
+    # 解开限制
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    print(f"原始限制: soft={soft}, hard={hard}")
+    # 设置为 2048（注意不能超过 hard limit，否则会报错）
+    resource.setrlimit(resource.RLIMIT_NOFILE, (2048, hard))
+    # 验证修改结果
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    print(f"修改后: soft={soft}, hard={hard}")
+
     """主函数"""
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
@@ -787,6 +864,12 @@ def main():
         help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
     )
 
+    parser.add_argument(
+        "--DEBUG",
+        action="store_true",
+        help="开启调试模式，捕获所有异常并打印详细错误信息",
+    )
+
     args = parser.parse_args()
 
     # 如果只是要汇总
@@ -828,6 +911,7 @@ def main():
         rla_list=args.rla_list,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
+        DEBUG=args.DEBUG,
     )
 
     # 运行实验

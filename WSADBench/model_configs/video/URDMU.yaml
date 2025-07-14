@@ -1,0 +1,38 @@
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.URDMU.run.URDMU
+
+# 模型参数
+parameters:
+  # 训练参数
+  dropout: 0.6
+  epochs: 1
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay:  0.00005
+  # 损失权重
+
+  input_size: 2048
+  flag: "Train"
+  a_nums: 60
+  n_nums: 60
+
+# 模型参数
+# parameters:
+#   # 训练参数
+#   dropout: 0.6
+#   epochs: 3000
+#   batch_size: 64
+#   learning_rate: 0.0001
+#   weight_decay:  0.00005
+#   # 损失权重
+
+#   input_size: 2048
+#   flag: "Train"
+#   a_nums: 60
+#   n_nums: 60
+
+  # divided into N = 200 snippets
+  # hyperparameters of (λ1, λ2, λ3, λ4) are set as (0.1, 0.1, 0.001, 0.0001)
+  # All the operations of topK are equal to K = b M  16 c + 1. In equation (10), d = 100

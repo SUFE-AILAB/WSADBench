@@ -5,6 +5,8 @@ from WSADBench.baseline.PReNet.utils import sampler_pairs
 def fit(X_train_tensor, y_train, model, optimizer, epochs, batch_num, batch_size,
          s_a_a, s_a_u, s_u_u, device=None):
     # epochs
+    model = model.to(device)
+    model.train()
     for epoch in range(epochs):
         # generate the batch samples
         X_train_loader, y_train_loader = sampler_pairs(X_train_tensor, y_train, epoch, batch_num, batch_size,

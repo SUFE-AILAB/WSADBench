@@ -1,6 +1,17 @@
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
+from WSADBench.datasets.dataset_support.video_pre_segment import segment_average
+
+def segment_average(arr, num_segments):
+    segs = np.linspace(0, len(arr), num_segments + 1, dtype=int)
+    return np.stack(
+        [
+            np.mean(arr[segs[i] : segs[i + 1]], axis=0) if segs[i] != segs[i + 1] else arr[segs[i]]
+            for i in range(num_segments)
+        ],
+        axis=0,
+    )
 
 class UCFCrimeManager:
     def __init__(self, ds_config):
@@ -8,6 +19,7 @@ class UCFCrimeManager:
         self.wd = Path(ds_config["working_dir"])
         self.data_dir = self.wd / ds_config["DATA_DIR"]
         self.processed_dir = self.data_dir / ds_config["MODALITY_DIR"]
+        self.segmentation_dir = self.data_dir / ds_config["SEGMENTATION_DIR"] / ds_config["MODALITY_DIR"]
         self.seed = ds_config.get("seed", 0)
 
     def get_split(self):
@@ -23,46 +35,52 @@ class UCFCrimeManager:
 
         return splits
 
-    def load_data(self, limit_clips=None, num_segments=None):
-        if limit_clips is not None and num_segments is not None:
-            raise ValueError("Only one of limit_clips or num_segments can be specified.")
-
-        def segment_average(arr, num_segments):
-            segs = np.linspace(0, len(arr), num_segments + 1, dtype=int)
-            return np.stack(
-                [
-                    np.mean(arr[segs[i] : segs[i + 1]], axis=0) if segs[i] != segs[i + 1] else arr[segs[i]]
-                    for i in range(num_segments)
-                ],
-                axis=0,
-            )
-
+    def load_data(self, limit=None, num_segments=None):
+        if num_segments is not None:
+            load_dir = self.segmentation_dir / str(num_segments)
+            if not self.segmentation_dir.exists():
+                raise FileNotFoundError(f"Segmented dir {load_dir} does not exist. You may need to run video_pre_segment.py first.")
+        else:
+            load_dir = self.processed_dir
+                    
         def load_train_split(files):
-            arrs, ys = [], []
-            for file_name in tqdm(files, desc="Loading training data"):
-                file_path = self.processed_dir / f"{file_name}.npy"
+            arrs, ys, vid_ids = [], [], []
+            vid_kind = {}  # 视频标签种类字典
+            vid_source_clips_num = {}  # 视频原始片段数量字典
+            for video_idx, file_name in enumerate(tqdm(files, desc="Loading training data")):
+                file_path = load_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
                 if not file_path.exists():
                     continue
 
                 arr = np.load(file_path, mmap_mode="r")
-                if limit_clips is not None:
-                    arr = arr[:limit_clips]
-                elif num_segments is not None:
-                    arr = segment_average(arr, num_segments)
+                if limit is not None:
+                    arr = arr[:limit]
 
                 label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
+                vid_id = np.full(len(arr), video_idx, dtype=np.int32)
 
                 arrs.append(arr)
                 ys.append(y)
+                vid_ids.append(vid_id)
+
+                vid_kind[video_idx] = kind if 'Normal' not in kind else 'Normal'
+                source_arr = np.load(self.processed_dir / f"{file_name}.npy", mmap_mode="r")
+                vid_source_clips_num[video_idx] = source_arr.shape[0]
+            print(f"Loaded {len(arrs)} training files from {load_dir}")
             return {
                 "X_train": np.concatenate(arrs, axis=0),
                 "y_train": np.concatenate(ys, axis=0),
+                "vid_train": np.concatenate(vid_ids, axis=0),
+                "vid_kind_train": vid_kind,
+                "vid_source_clips_num_train": vid_source_clips_num,
             }
 
         def load_test_split(files):
-            arrs, ys, y_gt, y_idx, y_gt_idx = [], [], [], [], []
+            arrs, ys, y_gt, y_idx, y_gt_idx, vid_ids = [], [], [], [], [], []
+            vid_kind = {}
+            vid_source_clips_num = {}
             for i, file_name in enumerate(tqdm(files, desc="Loading test data")):
                 file_path = self.processed_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
@@ -75,6 +93,7 @@ class UCFCrimeManager:
 
                 label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
+                vid_id = np.full(len(arr), i, dtype=np.int32)  # 测试集中视频ID就是文件索引
 
                 name = file_path.stem
                 truth = ground_truth_dict[name]["truth"]
@@ -85,12 +104,21 @@ class UCFCrimeManager:
                 y_gt.append(truth)
                 y_idx.append(idx)
                 y_gt_idx.append(gt_idx)
+                vid_ids.append(vid_id)
+
+                vid_kind[i] = kind if 'Normal' not in kind else 'Normal'
+                source_arr = np.load(self.processed_dir / f"{file_name}.npy", mmap_mode="r")
+                vid_source_clips_num[i] = source_arr.shape[0]
+            print(f"Loaded {len(arrs)} test files from {self.processed_dir}")
             return {
                 "X_test": np.concatenate(arrs, axis=0),
                 "y_test": np.concatenate(ys, axis=0),
                 "y_test_gt": np.concatenate(y_gt, axis=0),
                 "y_test_idx": np.concatenate(y_idx, axis=0),
                 "y_test_gt_idx": np.concatenate(y_gt_idx, axis=0),
+                "vid_test": np.concatenate(vid_ids, axis=0),
+                "vid_kind_test": vid_kind,
+                "vid_source_clips_num_test": vid_source_clips_num,
             }
 
         # 主体逻辑
@@ -135,7 +163,7 @@ class UCFCrimeManager:
 
 if __name__ == "__main__":
     ds_config = {
-        "working_dir": "/data/coding/yx/WSADBench/",
+        "working_dir": "/data/coding/wsad/yx/WSADBench/",
         "DATA_DIR": "WSADBench/datasets/CV_by_I3D/UCF_Crime/",
         "SPLIT_DIR": "splits",
         "SPLIT_FILE": {"train": "Anomaly_Train.txt", "test": "Anomaly_Test.txt"},
@@ -146,8 +174,17 @@ if __name__ == "__main__":
         "NUM_FRAMES": 16,
     }
     manager = UCFCrimeManager(ds_config)
-    data = manager.load_data(limit_clips=32)
+    data = manager.load_data(limit=32)
     # data = manager.load_data(num_segments=200)
     print(data.keys())
-    print(data["X_train"].shape, data["y_train"].shape)
-    print(data["X_test"].shape, data["y_test"].shape)
+    print(data["X_train"].shape, data["y_train"].shape, data["vid_train"].shape)
+    print(data["X_test"].shape, data["y_test"].shape, data["vid_test"].shape)
+    
+    # 显示视频ID分布示例
+    print("\n训练集视频ID分布示例:")
+    print("vid_train前20个:", data["vid_train"][:20])
+    print("训练集包含视频数量:", len(np.unique(data["vid_train"])))
+    
+    print("\n测试集视频ID分布示例:")
+    print("vid_test前20个:", data["vid_test"][:20])
+    print("测试集包含视频数量:", len(np.unique(data["vid_test"])))

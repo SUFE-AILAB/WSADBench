@@ -263,7 +263,12 @@ class DataGenerator:
         else:
 
             for kind, dataset_list in self.all_dataset_list.items():
-                if self.dataset not in dataset_list:
+                if kind in ["video"]:
+                    real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
+                else:
+                    real_ds_name = self.dataset
+                    
+                if real_ds_name not in dataset_list:
                     continue
 
                 if "DATA_DIR" in self.configs[kind]:
@@ -275,12 +280,19 @@ class DataGenerator:
                     X, y = data["X"], data["y"]
                     break
 
-                ManagerClass = import_class(self.configs[kind][self.dataset]["MANAGER_CLASS"])
-                ds_config = self.configs[kind][self.dataset]
+                ManagerClass = import_class(self.configs[kind][real_ds_name]["MANAGER_CLASS"])
+                ds_config = self.configs[kind][real_ds_name]
                 ds_config["working_dir"] = self.wd
                 ds_config["seed"] = self.seed
                 data_manager = ManagerClass(ds_config)
-                data = data_manager.load_data(limit_clips=32)
+                ds_param = self.dataset.split(".")[1:]
+                _params = {}
+                for param in ds_param:
+                    if param[0] == 's' and param[1:].isdigit():
+                        _params["num_segments"] = int(param[1:])
+                    if param[0] == 'l' and param[1:].isdigit():
+                        _params["limit"] = int(param[1:])
+                data = data_manager.load_data(**_params)
 
             if data is None:
                 raise NotImplementedError(f"Dataset {self.dataset} not found in the available datasets.")
@@ -420,7 +432,7 @@ class DataGenerator:
             "y_test": y_test,
         }
 
-        if data is not None:
+        if data is not None and isinstance(data, dict):
             data.update(result)
             result = data
         return result
