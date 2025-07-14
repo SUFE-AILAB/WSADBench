@@ -92,7 +92,7 @@ class CAS_Module(nn.Module):
         return out
 
 
-class BaS_Net(nn.Module):
+class BaS_Net(nn.Module):        #这个模型输出有点特别，运行时需要重赋值变量
     def __init__(self, len_feature, num_classes, num_segments):
         super(BaS_Net, self).__init__()
         self.filter_module = Filter_Module(len_feature)    #前景权重生成

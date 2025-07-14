@@ -370,7 +370,7 @@ def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device
     ])
 
     # 创建参数对象
-    args = argparse.Namespace(k=4, model_name='model_single')
+    args = argparse.Namespace(k=4, model_name='model_single')    #可根据需要修改参数，目前model_single是OK的
     # 调用主训练函数
     return fit_ARNet(model ,labels,optimizer, train_loader, epochs, device,args,
                       DMIL_weight, Center_weight,verbose=True)

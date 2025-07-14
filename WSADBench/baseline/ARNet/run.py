@@ -178,7 +178,7 @@ class ARNet:
 
         return self
 
-    def predict_proba(self, X):           #插眼，可能需要根据debug来对X进行维度转换
+    def predict_proba(self, X):           #插眼，留意
         """
         预测异常概率
 

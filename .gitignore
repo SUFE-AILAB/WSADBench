@@ -28,3 +28,11 @@ run_adbench_wsad_baseline.py
 implementing
 source_datasets
 WSADBench/model_configs/video/tmp_settings
+apex
+XCLIP
+CLIP-main
+utils_umil
+checkpoints
+datasets_process
+ckpt
+UMIL.main.py
