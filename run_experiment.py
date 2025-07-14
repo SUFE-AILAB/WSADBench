@@ -702,6 +702,10 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
             train_input["crops_num"] = data_shape[1] if data_shape else None
+        if has_param(model.fit, "vid_kind"):
+            train_input["vid_kind"] = data.get("vid_kind_train", None)
+        if has_param(model.fit, "vid_source_clips_num"):
+            train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
         
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -723,6 +727,10 @@ def run_single_experiment_with_gpu(params_with_config):
             test_input["vid_info"] = data.get("vid_test", None)
         if has_param(pred_func, "crops_num"):
             test_input["crops_num"] = data_shape[1] if data_shape else None
+        if has_param(pred_func, "vid_kind"):
+            test_input["vid_kind"] = data.get("vid_kind_test", None)
+        if has_param(pred_func, "vid_source_clips_num"):
+            test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
         
         model.fit(**train_input)
         

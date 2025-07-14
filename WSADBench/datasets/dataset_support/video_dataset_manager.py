@@ -45,6 +45,8 @@ class UCFCrimeManager:
                     
         def load_train_split(files):
             arrs, ys, vid_ids = [], [], []
+            vid_kind = {}  # 视频标签种类字典
+            vid_source_clips_num = {}  # 视频原始片段数量字典
             for video_idx, file_name in enumerate(tqdm(files, desc="Loading training data")):
                 file_path = load_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
@@ -62,15 +64,23 @@ class UCFCrimeManager:
                 arrs.append(arr)
                 ys.append(y)
                 vid_ids.append(vid_id)
-            print(f"\nLoaded {len(arrs)} training files from {load_dir}")
+
+                vid_kind[video_idx] = kind if 'Normal' not in kind else 'Normal'
+                source_arr = np.load(self.processed_dir / f"{file_name}.npy", mmap_mode="r")
+                vid_source_clips_num[video_idx] = source_arr.shape[0]
+            print(f"Loaded {len(arrs)} training files from {load_dir}")
             return {
                 "X_train": np.concatenate(arrs, axis=0),
                 "y_train": np.concatenate(ys, axis=0),
                 "vid_train": np.concatenate(vid_ids, axis=0),
+                "vid_kind_train": vid_kind,
+                "vid_source_clips_num_train": vid_source_clips_num,
             }
 
         def load_test_split(files):
             arrs, ys, y_gt, y_idx, y_gt_idx, vid_ids = [], [], [], [], [], []
+            vid_kind = {}
+            vid_source_clips_num = {}
             for i, file_name in enumerate(tqdm(files, desc="Loading test data")):
                 file_path = self.processed_dir / f"{file_name}.npy"
                 kind = file_path.parent.name
@@ -95,7 +105,11 @@ class UCFCrimeManager:
                 y_idx.append(idx)
                 y_gt_idx.append(gt_idx)
                 vid_ids.append(vid_id)
-            print(f"\nLoaded {len(arrs)} test files from {self.processed_dir}")
+
+                vid_kind[i] = kind if 'Normal' not in kind else 'Normal'
+                source_arr = np.load(self.processed_dir / f"{file_name}.npy", mmap_mode="r")
+                vid_source_clips_num[i] = source_arr.shape[0]
+            print(f"Loaded {len(arrs)} test files from {self.processed_dir}")
             return {
                 "X_test": np.concatenate(arrs, axis=0),
                 "y_test": np.concatenate(ys, axis=0),
@@ -103,6 +117,8 @@ class UCFCrimeManager:
                 "y_test_idx": np.concatenate(y_idx, axis=0),
                 "y_test_gt_idx": np.concatenate(y_gt_idx, axis=0),
                 "vid_test": np.concatenate(vid_ids, axis=0),
+                "vid_kind_test": vid_kind,
+                "vid_source_clips_num_test": vid_source_clips_num,
             }
 
         # 主体逻辑
