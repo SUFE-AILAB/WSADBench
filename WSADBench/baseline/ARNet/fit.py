@@ -139,7 +139,7 @@ def total_loss(y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,C
     device = y_pred.device
     # # 重塑预测结果
     batch_size = y_pred.shape[0]                                       #插个点，有可能是把y_pred展平
-    y_pred = y_pred.view(batch_size, -1)            #!!!这段代码可能没起作用
+    y_pred = y_pred.view(batch_size, -1)            #展平，[120,32,1] -> [120,32] 
 
 
     # for i, data in enumerate(train_loader):     # i为索引 ， data为加载的视频数据   #报错，train_loader没传入数据
@@ -188,7 +188,7 @@ def total_loss(y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,C
 
     return total_loss
 
-def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_weight=1.000,Center_weight=20.000,
+def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_weight=1.000,Center_weight=20.000,  #seq_len为lstm添加
           verbose=True,scheduler=None):
     """
     训练ARNeet模型
@@ -300,7 +300,7 @@ def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_wei
     return train_history
 
 
-def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device,
+def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device,     #seq_len为lstm添加
                       DMIL_weight,Center_weight, verbose=True):
     # global train_loader
     """
@@ -370,8 +370,8 @@ def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device
     ])
 
     # 创建参数对象
-    args = argparse.Namespace(k=4, model_name='model_single')    #可根据需要修改参数，目前model_single是OK的
+    args = argparse.Namespace(k=4, model_name='model_single')    #可根据需要修改参数，目前model_single,model_mean,model_sequence,model_concatcate是OK的
     # 调用主训练函数
-    return fit_ARNet(model ,labels,optimizer, train_loader, epochs, device,args,
+    return fit_ARNet(model ,labels,optimizer, train_loader, epochs, device,args,       #seq_len为lstm添加
                       DMIL_weight, Center_weight,verbose=True)
     

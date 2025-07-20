@@ -5,7 +5,7 @@ import numpy as np
 from typing import Dict, Any, Optional, Union, List, Tuple
 from sklearn.metrics import roc_auc_score, average_precision_score
 import time
-
+from tqdm import tqdm
 from WSADBench.myutils import Utils
 from WSADBench.baseline.ARNet.model import model_generater
 from WSADBench.baseline.ARNet.model import Filter_Module,CAS_Module,BaS_Net
@@ -39,6 +39,7 @@ class ARNet:
             segments_per_video: int = 32,
             use_scheduler: bool = True,
             scheduler_milestones: List[int] = None,
+            # seq_len:List[int] = None,  # 如果是LSTM模型，需要传入序列长度
             verbose: bool = True, 
     ):
         """
@@ -75,6 +76,7 @@ class ARNet:
         self.segments_per_video = segments_per_video
         self.use_scheduler = use_scheduler
         self.scheduler_milestones = scheduler_milestones or [25, 50]
+        # self.seq_len = seq_len  # 如果是LSTM模型，需要传入序列长度
         self.verbose = verbose
 
         # 内部状态
@@ -94,6 +96,8 @@ class ARNet:
 
     def _init_model(self):
         """初始化模型"""
+        # if self.seq_len is None:
+        #     self.seq_len = torch.full((self.batch_size*2,), 32, dtype=torch.int32)
         if self.model is None:
             # 创建模型
             
@@ -103,8 +107,10 @@ class ARNet:
             #     seq_len = torch.full((2,), 32, dtype=torch.int32).to(self.device)
             #     self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=seq_len).to(self.device)
             # else:
-            self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size).to(self.device)
-            
+            if self.model_name == "model_lstm":
+                self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=self.seq_len).to(self.device)  
+            else:
+                self.model = model_generater(model_name=self.model_name, feature_size=self.feature_size).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adagrad(
@@ -152,6 +158,7 @@ class ARNet:
             X_train=X,
             y_train=y,
             model=self.model,
+            # seq_len=self.seq_len,  # 如果是LSTM模型，需要传入序列长度
             optimizer=self.optimizer,
             epochs=self.epochs,
             batch_size=self.batch_size,
@@ -194,14 +201,23 @@ class ARNet:
         self.model.eval()
 
         X = self._preprocess_data(X)
-        X_tensor = torch.FloatTensor(X).to(self.device)     #[696270,2048]
+        X_tensor = torch.FloatTensor(X)   #[696270,2048]
         # X_tensor = X_tensor.reshape(X.shape[0], 1, X.shape[1])
         # print(f"X_tensor_shape:{X_tensor.shape}")
-
+        batch_size = 2000 #写死
+        all_scores = []
         with torch.no_grad():
-            _, y_pred = self.model(X_tensor)
-            scores = y_pred.squeeze().cpu().numpy()
+            for start in tqdm(range(0, len(X), batch_size)):
+                end = min(start + batch_size, len(X))
+                # print(f'start:{start}, end:{end}')
+                X_tensor_batch = X_tensor[start:end].to(self.device)  # [B, 2048]
+                _, y_pred = self.model(X_tensor_batch)   #[200,10,1] ,最后一个不是 ;seq_len 为lstm添加
+                y_score = y_pred.reshape(y_pred.shape[0]*y_pred.shape[1], -1)  # [2000, 1]  #展平
+                score = y_score.squeeze().cpu().numpy()
             # scores = y_pred.squeeze()
+                all_scores.append(score)  #合并
+        # 合并所有 batch 结果
+        scores = np.concatenate(all_scores, axis=0)
         # 确保返回一维数组
         if scores.ndim == 0:
             scores = np.array([scores])
@@ -315,24 +331,24 @@ class ARNet:
                     "ARNet_non_trainable": non_trainable_params,
                     "total": total_params,
                 }
-            else:
-                # 如果模型还没有初始化，创建临时模型来计算参数
-                from WSADBench.baseline.ARNet.model import ARNetLearner
+            # else:
+            #     # 如果模型还没有初始化，创建临时模型来计算参数
+            #     from WSADBench.baseline.ARNet.model import ARNetLearner
 
-                temp_model = ARNetLearner(input_dim=self.input_dim, drop_p=self.dropout)
-                total_params = sum(p.numel() for p in temp_model.parameters())
-                trainable_params = sum(
-                    p.numel() for p in temp_model.parameters() if p.requires_grad
-                )
-                non_trainable_params = total_params - trainable_params
+                # temp_model = ARNetLearner(input_dim=self.input_dim, drop_p=self.dropout)
+                # total_params = sum(p.numel() for p in temp_model.parameters())
+                # trainable_params = sum(
+                #     p.numel() for p in temp_model.parameters() if p.requires_grad
+                # )
+                # non_trainable_params = total_params - trainable_params
 
-                return {
-                    "ARNet_total": total_params,
-                    "ARNet_trainable": trainable_params,
-                    "ARNet_non_trainable": non_trainable_params,
-                    "total": total_params,
-                    "note": f"Parameters counted from temporary model (input_dim={self.input_dim})",
-                }
+                # return {
+                #     "ARNet_total": total_params,
+                #     "ARNet_trainable": trainable_params,
+                #     "ARNet_non_trainable": non_trainable_params,
+                #     "total": total_params,
+                #     "note": f"Parameters counted from temporary model (input_dim={self.input_dim})",
+                # }
         except Exception as e:
             return {"error": f"Failed to count parameters: {str(e)}", "total": 0}
 

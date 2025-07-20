@@ -174,11 +174,11 @@ class Model_mean(torch.nn.Module):
         #          bias=True, padding_mode='zeros')
 
     def forward(self, inputs, is_training=True):    #卷积需要的输入维度：[B,channel, T]  channel = F
-        segments = 32
+        segments = 10
         segments_n = inputs.shape[0] // segments  #计算输入的段数
         if inputs.ndim == 2:  # 如果输入是二维张量(B, F)，则添加一个维度
             inputs = inputs[:segments * segments_n].reshape(segments_n, segments, inputs.shape[1])  # (B, T, F)
-        inputs = inputs.permute(0, 2, 1)     #将输入特征从(B, T, F)转换为(B, F, T)
+        inputs = inputs.permute(0, 2, 1)     #将输入特征从(B, T, F)转换为(B, F, T)   [120,32,2048] -> [120, 2048, 32]
         x_1 = F.relu(self.conv1(inputs)).permute(0, 2, 1).unsqueeze(2)    # (B,T,F,1)
         x_2 = F.relu(self.conv2(inputs)).permute(0, 2, 1).unsqueeze(2)    # (B,T,F,1)
         x_3 = F.relu(self.conv3(inputs)).permute(0, 2, 1).unsqueeze(2)    # (B,T,F,1)
@@ -188,7 +188,7 @@ class Model_mean(torch.nn.Module):
         # x = F.relu(self.conv_b2(x))
         # x = x_1 + x
         # x = F.relu(self.conv_b1(x))
-        x = x.squeeze(2)   # (B,T,F)  
+        x = x.squeeze(2)   # (B,T,F)  #[120,32,2048]   第二次 [200,10,2048]
         if is_training:
             x = self.dropout(x)
         return x, self.sigmoid(self.classifier(x))   #输出特征 + 异常分数(B, T, 1)
@@ -219,6 +219,10 @@ class Model_sequence(torch.nn.Module):
         self.apply(weights_init)
 
     def forward(self, inputs, is_training=True):            #残差连接融合多尺度特征
+        segments = 10
+        segments_n = inputs.shape[0] // segments  #计算输入的段数
+        if inputs.ndim == 2:  # 如果输入是二维张量(B, F)，则添加一个维度
+            inputs = inputs[:segments * segments_n].reshape(segments_n, segments, inputs.shape[1])  # (B, T, F)
         inputs = inputs.permute(0, 2, 1)
         x_1 = F.relu(self.conv1(inputs))
         x_2 = F.relu(self.conv2(inputs))
@@ -246,9 +250,9 @@ class Model_concatcate(torch.nn.Module):
         self.conv3 = nn.Conv1d(in_channels=n_feature, out_channels=n_feature, kernel_size=5, stride=1,
                  padding=2, dilation=1, groups=1,
                  bias=True, padding_mode='zeros')
-        # self.conv_b1 = nn.Conv1d(in_channels=n_feature * 3, out_channels=n_feature, kernel_size=1, stride=1,
-        #          padding=0, dilation=1, groups=1,
-        #          bias=True, padding_mode='zeros')
+        self.conv_b1 = nn.Conv1d(in_channels=n_feature * 3, out_channels=n_feature, kernel_size=1, stride=1,
+                 padding=0, dilation=1, groups=1,
+                 bias=True, padding_mode='zeros')
         # self.conv_b2 = nn.Conv1d(in_channels=n_feature, out_channels=n_feature, kernel_size=1, stride=1,
         #          padding=0, dilation=1, groups=1,
         #          bias=True, padding_mode='zeros')
@@ -259,11 +263,17 @@ class Model_concatcate(torch.nn.Module):
         self.apply(weights_init)
 
     def forward(self, inputs, is_training=True):           #全连接层融合特征/拼接结构
+        segments = 10
+        segments_n = inputs.shape[0] // segments  #计算输入的段数
+        if inputs.ndim == 2:  # 如果输入是二维张量(B, F)，则添加一个维度
+            inputs = inputs[:segments * segments_n].reshape(segments_n, segments, inputs.shape[1])  # (B, T, F)
         inputs = inputs.permute(0, 2, 1)
         x_1 = F.relu(self.conv1(inputs))
         x_2 = F.relu(self.conv2(inputs))
         x_3 = F.relu(self.conv3(inputs))
-        x = torch.cat((x_1, x_2, x_3), dim=1)
+        x = torch.cat((x_1, x_2, x_3), dim=1)   # [B,F*3,T] 通道维数拼接
+        x = self.conv_b1(x)    # [B,F,T] 通过1D卷积层融合特征 
+        
         x = x.permute(0, 2, 1)
         x = F.relu(self.fc(x))
 
@@ -303,24 +313,25 @@ class Model_concatcate(torch.nn.Module):
 #         return M
 
 class model_lstm(torch.nn.Module):
-    global seq_len
-    def __init__(self, n_feature):
+    def __init__(self, n_feature,seq_len):
         super(model_lstm, self).__init__()
         self.bidirectlstm = nn.LSTM(
             input_size=n_feature,
             hidden_size=n_feature,    #输入/输出同维
             num_layers=1,
             batch_first=True)            #支持变长序列
+        self.seq_len = seq_len
         self.classifier = nn.Linear(n_feature, 1)
         self.sigmoid = nn.Sigmoid()
         # self.dropout = nn.Dropout(0.7)
 
     def forward(self, inputs, seq_len, is_training=True):
+        self.bidirectlstm.flatten_parameters()   #降低显存占用
         if is_training:
             seq_len_list = seq_len.tolist()
             x = pack_padded_sequence(input=inputs, lengths=seq_len_list, batch_first=True, enforce_sorted=False)  #支持变长序列输入，抽取时序特征
             x, _ = self.bidirectlstm(x)               #双向LSTM
-            x, _ = pad_packed_sequence(x, batch_first=True)    #填充回标准张量
+            x, _ = pad_packed_sequence(x, batch_first=True)    #填充回标准张量  [120,32,2048]
             # x = self.dropout(x)
         else:
             x, _ = self.bidirectlstm(inputs)
@@ -328,7 +339,7 @@ class model_lstm(torch.nn.Module):
 
 
 #统一接口  包含6中预定义架构
-def model_generater(model_name, feature_size):
+def model_generater(model_name, feature_size,seq_len=None):    #seq_len为lstm添加  #目前是认定feature_size与n_feature相同
     if model_name == 'model_single':
         model = Model_single(feature_size)  # for anomaly detection, only one class, anomaly, is needed.
     elif model_name == 'model_mean':
@@ -338,7 +349,7 @@ def model_generater(model_name, feature_size):
     elif model_name == 'model_concatcate':
         model = Model_concatcate(feature_size)
     elif model_name == 'model_lstm':
-        model = model_lstm(feature_size)
+        model = model_lstm(feature_size,seq_len)
     elif model_name == 'model_bas':
         model = BaS_Net(feature_size)
     else:
@@ -383,4 +394,4 @@ def count_parameters(model):
 
 
 # 兼容性别名
-Learner = model_generater  # 兼容原始实现的命名
+# Learner = model_generater  # 兼容原始实现的命名
