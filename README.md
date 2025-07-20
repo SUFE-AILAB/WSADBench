@@ -38,13 +38,13 @@ pip install opencv-python
 #### 表格数据实验
 ```bash
 # 运行单个模型
-python run_tabular.py --models IForest --data_type tabular
+python run_experiment.py --models IForest --data_type tabular
 
 # 运行多个模型
-python run_tabular.py --models IForest AABiGAN CRGAN --data_type tabular
+python run_experiment.py --models IForest AABiGAN CRGAN --data_type tabular
 
 # 指定其他参数
-python run_tabular.py --models IForest --seeds 5 --processes 4 --data_type tabular
+python run_experiment.py --models IForest --seeds 5 --processes 4 --data_type tabular
 ```
 
 #### 视频数据实验

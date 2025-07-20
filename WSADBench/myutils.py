@@ -58,15 +58,15 @@ class Utils():
         random.seed(seed)
 
         # tensorflow seed
-        try:
-            import tensorflow as tf
-            try:
-                tf.random.set_seed(seed) # for tf >= 2.0
-            except:
-                tf.set_random_seed(seed)
-                tf.random.set_random_seed(seed)
-        except:
-            pass
+        # try:
+        #     import tensorflow as tf
+        #     try:
+        #         tf.random.set_seed(seed) # for tf >= 2.0
+        #     except:
+        #         tf.set_random_seed(seed)
+        #         tf.random.set_random_seed(seed)
+        # except:
+        #     pass
 
         # pytorch seed
         torch.manual_seed(seed)

@@ -14,6 +14,8 @@ import logging
 from typing import Dict, List, Optional, Any
 import torch
 import torch.multiprocessing as tmp
+from itertools import product
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -73,6 +75,7 @@ class ExperimentRunner:
         seed_list=None,
         gpu_list=None,
         DEBUG=False,
+        NO_RESUME=False,
     ):
         """
         初始化运行器
@@ -89,6 +92,7 @@ class ExperimentRunner:
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
+        self.NO_RESUME = NO_RESUME
         if data_type not in ["video", "tabular"]:
             raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
 
@@ -367,15 +371,33 @@ class ExperimentRunner:
 
         logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']}")
 
+    def _load_finish_exp(self):
+        finished_experiments = set()
+        for model_name in self.models:
+            detail_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
+
+            if detail_file.exists():
+                try:
+                    df = pd.read_csv(detail_file)
+                    main_setting = df[["model", "dataset", "rla", "seed"]].drop_duplicates().to_numpy().tolist()
+                    finished_experiments.update([tuple(row) for row in main_setting])
+                except Exception as e:
+                    pass
+        return finished_experiments
+
     def run_experiments(self):
         """运行所有实验"""
         # 生成实验参数组合
-        experiment_params = []
-        for model_name in self.models:
-            for dataset in self.datasets:
-                for rla in self.rla_list:
-                    for seed in self.seed_list:
-                        experiment_params.append((model_name, dataset, rla, seed))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list, self.seed_list))
+
+        finished_experiments = self._load_finish_exp()
+        if finished_experiments and not self.NO_RESUME:
+            logger.info(f"已完成 {len(finished_experiments)} 个实验，跳过这些实验")
+            experiment_params = [params for params in experiment_params if params not in finished_experiments]
+
+        if not experiment_params:
+            logger.info("没有需要运行的实验，所有实验已完成或跳过")
+            return []
 
         logger.info(f"总共 {len(experiment_params)} 个实验")
         logger.info(f"模型: {self.models}")
@@ -684,11 +706,11 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 训练时间
         start_time = time.time()
+
         def has_param(func, param_name):
             """检查函数是否有指定参数"""
             return param_name in inspect.signature(func).parameters
-        
-        
+
         train_input = {}
         if has_param(model.fit, "X"):
             train_input["X"] = data["X_train"]
@@ -706,7 +728,7 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["vid_kind"] = data.get("vid_kind_train", None)
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
-        
+
         pred_func = None
         if hasattr(model, "predict_score"):
             pred_func = model.predict_score
@@ -716,7 +738,6 @@ def run_single_experiment_with_gpu(params_with_config):
             pred_func = model.predict_proba
         else:
             raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
-
 
         test_input = {}
         if has_param(pred_func, "X"):
@@ -731,9 +752,9 @@ def run_single_experiment_with_gpu(params_with_config):
             test_input["vid_kind"] = data.get("vid_kind_test", None)
         if has_param(pred_func, "vid_source_clips_num"):
             test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
-        
+
         model.fit(**train_input)
-        
+
         fit_time = time.time() - start_time
 
         # 推理时间
@@ -870,6 +891,12 @@ def main():
         help="开启调试模式，捕获所有异常并打印详细错误信息",
     )
 
+    parser.add_argument(
+        "--NO_RESUME",
+        action="store_true",
+        help="如果设置了此选项，则不会跳过已完成的实验，强制重新运行所有实验",
+    )
+
     args = parser.parse_args()
 
     # 如果只是要汇总
@@ -912,6 +939,7 @@ def main():
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
+        NO_RESUME=args.NO_RESUME,
     )
 
     # 运行实验
