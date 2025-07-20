@@ -243,8 +243,8 @@ def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_wei
             # 前向传播
             # final_features, y_pred = model(inputs)  # [batch_size*2, 32, 1]   #发现model(inputs)有两个返回 ,忽略原模型输出x(特征)
             
-            # 创建序列长度张量（假设每个视频都是完整的32个片段）
-            seq_len = torch.full((batch_size*2,), 32, dtype=torch.int32).to(device)
+            # 动态创建序列长度张量
+            seq_len = torch.sum(torch.max(inputs.abs(), dim=2)[0] > 0, dim=1).to(device)  
             #lstm和其他模型不同
             if args.model_name == 'model_lstm':
                 _, y_pred = model(inputs, seq_len)
@@ -370,7 +370,7 @@ def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device
     ])
 
     # 创建参数对象
-    args = argparse.Namespace(k=4, model_name='model_single')    #可根据需要修改参数，目前model_single,model_mean,model_sequence,model_concatcate是OK的
+    args = argparse.Namespace(k=4, model_name='model_concatcate')    #可根据需要修改参数，目前model_single,model_mean,model_sequence,model_concatcate是OK的
     # 调用主训练函数
     return fit_ARNet(model ,labels,optimizer, train_loader, epochs, device,args,       #seq_len为lstm添加
                       DMIL_weight, Center_weight,verbose=True)

@@ -23,22 +23,22 @@ class ARNet:
             seed:int=42,
             #模型参数
             input_dim:int=2048,
-            dropout: float = 0.7,
+            # dropout: float = 0.7,
             model_name: str =None,
             n_feature: int=2048,
             feature_size:int=2048,
             # 训练参数
             epochs: int = 30,
-            batch_size: int = 60,
+            batch_size: int = 30,
             lr: float = 0.0001,                   #学习率
-            weight_decay: float = 0.0010000000474974513,
+            weight_decay: float = 0.0005,
             #损失参数
             DMIL_weight: float = 1.000,
             Center_weight: float = 20.000,
             #其他参数
-            segments_per_video: int = 32,
-            use_scheduler: bool = True,
-            scheduler_milestones: List[int] = None,
+            # segments_per_video: int = 300,
+            # k: int = 4,  # k值
+            # max_seqlen: int = 300,  # 最大序列长度
             # seq_len:List[int] = None,  # 如果是LSTM模型，需要传入序列长度
             verbose: bool = True, 
     ):
@@ -57,13 +57,14 @@ class ARNet:
             DMIL_weight: DMIL损失权重
             Center_weight: 中心损失权重 
             segments_per_video: 每个视频的段数
-            use_scheduler: 是否使用学习率调度器
-            scheduler_milestones: 学习率调度里程碑
+            k: k值
+            # max_seqlen: 最大序列长度
+            # seq_len: 序列长度（如果是LSTM模型）
             verbose: 是否打印详细信息
         """
         self.seed = seed
         self.input_dim = input_dim
-        self.dropout = dropout
+        # self.dropout = dropout
         self.model_name = model_name
         self.n_feature = n_feature
         self.feature_size = feature_size
@@ -73,9 +74,9 @@ class ARNet:
         self.weight_decay = weight_decay
         self.DMIL_weight = DMIL_weight
         self.Center_weight = Center_weight
-        self.segments_per_video = segments_per_video
-        self.use_scheduler = use_scheduler
-        self.scheduler_milestones = scheduler_milestones or [25, 50]
+        # self.segments_per_video = segments_per_video
+        # self.k = k
+        # self.max_seqlen = max_seqlen  # 最大序列长度
         # self.seq_len = seq_len  # 如果是LSTM模型，需要传入序列长度
         self.verbose = verbose
 
@@ -113,13 +114,13 @@ class ARNet:
                 self.model = model_generater(model_name=self.model_name, feature_size=self.feature_size).to(self.device)
 
             # 创建优化器
-            self.optimizer = optim.Adagrad(
+            self.optimizer = optim.Adam(
                 self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
             )
 
-            # 创建学习率调度器
-            if self.use_scheduler:
-                self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
+            # # 创建学习率调度器
+            # if self.use_scheduler:
+            #     self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
 
             if self.verbose:
                 print(f"ARNet模型初始化完成")
@@ -283,8 +284,8 @@ class ARNet:
             "DMIL_weight": self.DMIL_weight,
             "Center_weight": self.Center_weight,
             "segments_per_video": self.segments_per_video,
-            "use_scheduler": self.use_scheduler,
-            "scheduler_milestones": self.scheduler_milestones,
+            # "use_scheduler": self.use_scheduler,
+            # "scheduler_milestones": self.scheduler_milestones,
             "verbose": self.verbose,
         }
 
