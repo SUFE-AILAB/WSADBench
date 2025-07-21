@@ -1,0 +1,16 @@
+# RoSAS模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.VadClip.run.VadClip
+
+# 模型参数
+parameters:
+  # 训练参数
+  epochs: 5
+  batch_size: 64
+  learning_rate: 0.00002  # 写2e-5会成为str
+  use_scheduler: true
+  scheduler_milestones: [4, 8]
+  scheduler_gamma: 0.1
+  visual_length: 32

@@ -56,6 +56,7 @@ class ModelRegistry:
             "Supervised": "WSADBench.baseline.Supervised.supervised",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
+            "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
         }
         return default_model_map.get(model_name, None)
 
