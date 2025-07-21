@@ -28,6 +28,7 @@ run_adbench_wsad_baseline.py
 implementing
 source_datasets
 WSADBench/model_configs/video/tmp_settings
+WSADBench/model_configs/tabular/tmp_settings
 apex
 XCLIP
 CLIP-main

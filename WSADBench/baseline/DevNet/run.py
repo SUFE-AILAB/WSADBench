@@ -148,6 +148,7 @@ class DevNet:
         batch_size=512,
         nb_batch=20,
         network_depth=2,
+        loss_name:Literal["Deviation", "BCE"]="Deviation",
     ):
         """
 
@@ -165,6 +166,7 @@ class DevNet:
         self.seed = seed
         self.MAX_INT = np.iinfo(np.int32).max
         self.best_model_method = best_model_method
+        self.loss_name = loss_name
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -240,7 +242,12 @@ class DevNet:
         nb_batch = self.nb_batch
 
         self.model = self.create_deviation_network(self.input_dim, self.network_depth)
-        self.criterion = DeviationLoss(self.device)
+        if self.loss_name == "BCE":
+            self.criterion = nn.BCEWithLogitsLoss()
+        elif self.loss_name == "Deviation":
+            self.criterion = DeviationLoss(self.device)
+        else:
+            raise ValueError("Unsupported loss function: {}".format(self.loss_name))
 
         # Setup optimizer with weight decay for L2 regularization
         optimizer = optim.RMSprop(self.model.parameters(), lr=0.001, weight_decay=0.01)
