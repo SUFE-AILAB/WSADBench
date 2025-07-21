@@ -42,7 +42,26 @@ class UCFCrimeManager:
                 raise FileNotFoundError(f"Segmented dir {load_dir} does not exist. You may need to run video_pre_segment.py first.")
         else:
             load_dir = self.processed_dir
-                    
+
+        def fast_concatenate_axis0_variable(arrs):
+            if not arrs:
+                return np.array([])
+
+            base_shape = arrs[0].shape[1:]
+            for a in arrs:
+                if a.shape[1:] != base_shape:
+                    raise ValueError("All arrays must have the same shape except along axis=0.")
+
+            total_rows = sum(a.shape[0] for a in arrs)
+            result = np.empty((total_rows, *base_shape), dtype=arrs[0].dtype)
+
+            idx = 0
+            for a in arrs:
+                n = a.shape[0]
+                result[idx:idx + n] = a
+                idx += n
+
+            return result
         def load_train_split(files):
             arrs, ys, vid_ids = [], [], []
             vid_kind = {}  # 视频标签种类字典
@@ -70,9 +89,9 @@ class UCFCrimeManager:
                 vid_source_clips_num[video_idx] = source_arr.shape[0]
             print(f"Loaded {len(arrs)} training files from {load_dir}")
             return {
-                "X_train": np.concatenate(arrs, axis=0),
-                "y_train": np.concatenate(ys, axis=0),
-                "vid_train": np.concatenate(vid_ids, axis=0),
+                "X_train": fast_concatenate_axis0_variable(arrs),  # 10min, 7min
+                "y_train": fast_concatenate_axis0_variable(ys),  #
+                "vid_train": fast_concatenate_axis0_variable(vid_ids),
                 "vid_kind_train": vid_kind,
                 "vid_source_clips_num_train": vid_source_clips_num,
             }
@@ -111,12 +130,12 @@ class UCFCrimeManager:
                 vid_source_clips_num[i] = source_arr.shape[0]
             print(f"Loaded {len(arrs)} test files from {self.processed_dir}")
             return {
-                "X_test": np.concatenate(arrs, axis=0),
-                "y_test": np.concatenate(ys, axis=0),
-                "y_test_gt": np.concatenate(y_gt, axis=0),
-                "y_test_idx": np.concatenate(y_idx, axis=0),
-                "y_test_gt_idx": np.concatenate(y_gt_idx, axis=0),
-                "vid_test": np.concatenate(vid_ids, axis=0),
+                "X_test": fast_concatenate_axis0_variable(arrs),
+                "y_test": fast_concatenate_axis0_variable(ys),
+                "y_test_gt": fast_concatenate_axis0_variable(y_gt),
+                "y_test_idx": fast_concatenate_axis0_variable(y_idx),
+                "y_test_gt_idx": fast_concatenate_axis0_variable(y_gt_idx),
+                "vid_test": fast_concatenate_axis0_variable(vid_ids),
                 "vid_kind_test": vid_kind,
                 "vid_source_clips_num_test": vid_source_clips_num,
             }
