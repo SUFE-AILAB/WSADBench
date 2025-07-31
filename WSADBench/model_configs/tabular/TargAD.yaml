@@ -1,0 +1,32 @@
+#TargAD模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.TargAD.run.TargAD
+
+# 模型参数
+parameters:
+  # 训练参数
+  stage_1_epochs: 30
+  stage_2_epochs: 30
+  kmeans_batch: 256
+  stage_1_batch: 256
+  stage_2_batch: 128
+  anomaly_batch: 32
+  ood_batch: 32
+  stage_one_lr: 0.0001
+  stage_two_lr: 0.00001
+  # weight_decay: 1e-6
+  num_centroid: 5
+  num_anomaly_classes: 2  # 可选值为1,2,3,4,5,6,7
+
+  # 模型架构参数
+  embedding_dim: 64
+  feature_dim: 36    #依据数据集修改 原码196
+
+  #损失参数
+  loss_oe: 0.1
+  loss_re: 1.0
+
+  # 其他参数
+  verbose: true
