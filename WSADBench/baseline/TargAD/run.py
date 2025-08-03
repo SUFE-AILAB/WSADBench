@@ -33,10 +33,12 @@ class TargAD:
                  ood_batch=32,
                  stage_one_lr=0.0001,
                  stage_two_lr=0.00001,
-                 feature_dim=10,
+                 input_dim=10,    #输入数据特征维度，在fit过程中采用了动态输入
                  embedding_dim=64,
                  loss_oe=0.1,
                  loss_re=1,
+                 if_split=True,
+                 split_error="raise",
                  verbose=True, ):
         """
         TargAD模型参数配置类。
@@ -55,7 +57,7 @@ class TargAD:
         - stage_one_lr: 第一阶段学习率，默认为0.0001。
         - stage_two_lr: 第二阶段学习率，默认为0.00001。
         - embedding_dim: 嵌入维度，默认为64。
-        - feature_dim: 特征维度，默认为196。
+        - input_dim: 特征维度，默认为196。
         - loss_oe: 异常检测损失系数，默认为0.1。
         - loss_re: 正则化损失系数，默认为1。
         - verbose: 是否打印日志，默认为True。
@@ -82,10 +84,12 @@ class TargAD:
         self.stage_one_lr = stage_one_lr
         self.stage_two_lr = stage_two_lr
         
-        self.feature_dim = feature_dim
+        self.input_dim = input_dim
         self.embedding_dim = embedding_dim
         self.loss_oe = loss_oe
         self.loss_re = loss_re
+        self.if_split = if_split
+        self.split_error=split_error
         self.verbose = verbose
 
         #模型内部状态
@@ -100,9 +104,9 @@ class TargAD:
         """初始化模型"""
             # 创建模型
         
-        self.autoencoder = AutoEncoder(input_dim=self.feature_dim, num_features=self.embedding_dim).to(self.device)  
+        self.autoencoder = AutoEncoder(input_dim=self.input_dim, num_features=self.embedding_dim).to(self.device)  
             
-        self.model = Classifier(input_dim=self.feature_dim, num_features=self.embedding_dim, num_classes=self.num_subgroups).to(self.device)
+        self.model = Classifier(input_dim=self.input_dim, num_features=self.embedding_dim, num_classes=self.num_subgroups).to(self.device)
 
         # 创建优化器
         # self.optimizer1 = optim.Adam(
@@ -141,7 +145,7 @@ class TargAD:
             print(f"训练样本数: {len(X)}")
             print(f"无标签样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
         # 初始化模型
-        # feature_dim = X.shape[1] if X.ndim > 1 else 1
+        # input_dim = X.shape[1] if X.ndim > 1 else 1
         self._init_model()
         
         #训练模型
@@ -163,13 +167,15 @@ class TargAD:
             anomaly_batch=self.anomaly_batch,
             ood_batch=self.ood_batch,
             device=self.device,
-            feature_dim = self.feature_dim,
+            # input_dim = self.input_dim,
             embedding_dim = self.embedding_dim,
             loss_oe=self.loss_oe,
             loss_re=self.loss_re,
             stage_one_lr=self.stage_one_lr,
             stage_two_lr=self.stage_two_lr,
             weight_decay=1e-6,
+            if_split=self.if_split,
+            split_error=self.split_error,
             verbose=self.verbose
         )
         self.fitted = True

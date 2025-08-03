@@ -172,16 +172,16 @@ def soft_cross_entropy(logit, label, weight=None, reduce=None, reduction="mean")
 
 
 def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled,X_val,Y_val,model,
-    optimizer,num_centroid,num_anomaly_classes, stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,feature_dim,embedding_dim,loss_oe=0.1,loss_re=1,
+    optimizer,num_centroid,num_anomaly_classes, stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,input_dim,embedding_dim,loss_oe=0.1,loss_re=1,
     stage_one_lr=0.0001,stage_two_lr=0.00001,weight_decay=1e-6,verbose=True,scheduler=None):
 
 
     if verbose:
         print(f"开始训练TargAD模型，第一阶段共{stage_1_epochs}轮，第二阶段{stage_2_epochs}轮...")
         print(f"设备: {device}")
-    autoencoder = AutoEncoder(input_dim=feature_dim, num_features=embedding_dim).to(device)
+    autoencoder = AutoEncoder(input_dim=input_dim, num_features=embedding_dim).to(device)
     """第一阶段训练：自监督AE预训练 + 聚类 + 重构筛选"""  
-    X_filter, Y_filter, X_deleted, Y_deleted, score_delete = autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencoder, feature_dim, embedding_dim, num_centroid,
+    X_filter, Y_filter, X_deleted, Y_deleted, score_delete = autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencoder, input_dim, embedding_dim, num_centroid,
                                                                                    stage_1_epochs,kmeans_batch,stage_1_batch, stage_one_lr,filter=0.05, weight_decay=1e-6)
 
     """第二阶段训练"""
@@ -216,7 +216,7 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
     print('Starting Stage_Two...')
 
     num_subgroups = num_centroid + num_anomaly_classes
-    model = Classifier(feature_dim, embedding_dim, num_subgroups).to(device)
+    model = Classifier(input_dim, embedding_dim, num_subgroups).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=stage_two_lr, weight_decay=weight_decay)
 
     for epoch in range(stage_2_epochs):
@@ -226,6 +226,8 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
         # scheduler.step()
         # 过滤后的可靠正常
         stage2_nbBatch = X_filter.shape[0] // stage_2_batch
+        if stage2_nbBatch == 0:
+            stage2_nbBatch += 1      #避免除0情况
         X_filter, Y_filter = shuffle_u(X_filter, Y_filter)
         # model.train()
 
@@ -412,7 +414,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
     return optimal_th_1  
 
 def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,num_anomaly_classes,
-                    stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,feature_dim,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay, verbose=True):
+                    stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay,if_split,split_error, verbose=True):
     """
     整体训练流程函数：包括第一阶段（AE+聚类+筛选）与第二阶段（分类器+软标签训练）
 
@@ -423,10 +425,28 @@ def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,n
     model.train()
     autoencoder.train()
     #数据加载及处理
-    #根据源码，将训练数据划分出训练集和验证集
-    X_train, X_val, y_train, Y_val = train_test_split(
-    X_train, y_train, test_size=0.2, random_state=42, stratify=y_train  # 如果类别分布不均匀建议加stratify
-)
+   
+    #动态确认输入维度
+    input_dim = X_train.shape[1]
+    
+    #根据 if_split确定是否将训练数据划分出训练集和验证集，0的话用训练集计算阈值
+    if if_split == True and split_error== "raise":
+        X_train, X_val, y_train, Y_val = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)  # 如果类别分布不均匀建议加stratify
+
+    elif if_split == True and split_error== "auto":
+        try:
+            X_train, X_val, y_train, Y_val = train_test_split(
+            X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)  # 如果类别分布不均匀建议加stratify
+
+        except ZeroDivisionError: #发生划分错误就执行自动不划分
+            X_val = X_train
+            Y_val = y_train
+        
+    else:
+        X_val = X_train
+        Y_val = y_train
+
     # 分离无标签和异常数据
     unlabelled_mask = y_train == 0
     anomaly_mask = y_train == 1
@@ -451,10 +471,10 @@ def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,n
 
     return fit_TargAD(X_labelled_anomaly,Y_labelled_anomaly, X_unlabelled, Y_unlabelled,X_val,Y_val,model,    #添加验证数据
                         optimizer,num_centroid,num_anomaly_classes, stage_1_epochs, stage_2_epochs, kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,
-                         ood_batch, device,feature_dim,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay, verbose)
+                         ood_batch, device,input_dim,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay, verbose)
 
 #将第一阶段训练改为对数据清洗步骤
-def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencoder, feature_dim, embedding_dim, num_centroid, stage_1_epochs,kmeans_batch,stage_1_batch, stage_one_lr,filter=0.05, weight_decay=1e-6):
+def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencoder, input_dim, embedding_dim, num_centroid, stage_1_epochs,kmeans_batch,stage_1_batch, stage_one_lr,filter=0.05, weight_decay=1e-6):
     """
     第一阶段自监督AE预训练
     Args:
@@ -462,7 +482,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
         Y_unlabelled: 无标签样本的标签:0
         Y_unlabelled_category: 无标签样本的聚类标签
         X_labelled_anomaly: 已知异常样本
-        feature_dim: 特征维度
+        input_dim: 特征维度
         embedding_dim: 嵌入特征维度
         num_centroid: 簇的数量
         stage_1_epochs: 第一阶段的训练轮数
@@ -497,7 +517,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
         y_all[-(X_labelled_anomaly.shape[0]):] = -1
         # 进行shuffle打乱顺序
         x_all, y_all = shuffle_u(x_all, y_all)
-        autoencoder = AutoEncoder(input_dim=feature_dim, num_features=embedding_dim)
+        autoencoder = AutoEncoder(input_dim=input_dim, num_features=embedding_dim)
         # optimizer = torch.optim.Adam(autoencoder.parameters(),lr=lr)
         optimizer1 = torch.optim.Adam(autoencoder.parameters(), lr=0.0001, weight_decay=1e-6)
         # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=lr_milestones, gamma=0.1)
@@ -511,7 +531,9 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
             # scheduler.step()
             loss_all = 0.0
             # 一个epoch中所含batch的个数，共有32个batch
-            stage1_nbBatch = x_all.shape[0] // stage_1_batch
+            stage1_nbBatch = x_all.shape[0] // stage_1_batch    #发现这里有除0报错，因为簇中样本太少导致不够设置的batch
+            if stage1_nbBatch == 0:
+                stage1_nbBatch += 1     #防止除0
             autoencoder.train()
             for i in range(stage1_nbBatch):
                 # 选出每个簇中的一个batch_size样本
