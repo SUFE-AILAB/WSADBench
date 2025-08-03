@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Any
 import torch
 import torch.multiprocessing as tmp
 from itertools import product
+from common_utils.argTypes import int_or_float
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -860,7 +861,7 @@ def main():
     parser.add_argument(
         "--rla_list",
         nargs="+",
-        type=float,
+        type=int_or_float,
         default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
         help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
@@ -910,15 +911,6 @@ def main():
     # 如果不是dry_summary模式，则检查必需的参数
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
-
-    # 预处理RLA列表
-    _rla_list = []
-    for rla in args.rla_list:
-        if rla > 1:
-            _rla_list.append(int(rla))
-        else:
-            _rla_list.append(rla)
-    args.rla_list = _rla_list
 
     # 处理GPU参数
     gpu_list = None

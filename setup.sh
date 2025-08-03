@@ -1,5 +1,5 @@
-conda create -n ad python=3.9 -y
-conda activate ad
+conda create -n wsad python=3.9.21 -y
+conda activate wsad
 
 # conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 # pip install tensorflow

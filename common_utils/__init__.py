@@ -5,8 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 from filelock import FileLock
-from .wandbManager import WandbManager
-from .argTypes import str2bool, none_or_str
 
 
 class EarlyStopManager:
