@@ -380,7 +380,7 @@ class ExperimentRunner:
 
             if detail_file.exists():
                 try:
-                    df = pd.read_csv(detail_file)
+                    df = pd.read_csv(detail_file,dtype={'rla':'object'})
                     main_setting = df[["model", "dataset", "rla", "seed"]].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
@@ -566,21 +566,11 @@ def generate_summary_only(output_dir):
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file)
+                    df = pd.read_csv(result_file,dtype={'rla':'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
                     logger.warning(f"读取结果文件失败 {result_file}: {e}")
-            else:
-                # 备用：查找带时间戳的旧格式文件
-                old_result_files = list(model_dir.glob(f"{model_name}_results_*.csv"))
-                for old_result_file in old_result_files:
-                    try:
-                        df = pd.read_csv(old_result_file)
-                        all_results.append(df)
-                        logger.info(f"读取旧格式结果文件: {old_result_file} ({len(df)} 条记录)")
-                    except Exception as e:
-                        logger.warning(f"读取结果文件失败 {old_result_file}: {e}")
 
     if not all_results:
         logger.warning("没有找到任何结果文件")
