@@ -24,7 +24,8 @@ def fit_rosas(
     prt_step=10,
     verbose=True,
     train_method=None,
-    query_method=None
+    query_method=None,
+    query_num=None
 ):
     # train_x: [num, feature_dim], y: [num, 1]
     # 生成query
@@ -38,7 +39,7 @@ def fit_rosas(
     # data_generator = DataGenerator(train_x, train_semi_y, batch_size=batch_size)
 
     trainer.train(train_loader=train_loader,
-                  contamination=0.1, query_num=20,
+                  contamination=0.1, query_num=query_num,
                   optimizer=optimizer, scheduler=scheduler)
     return trainer
     # num_dict = {}
