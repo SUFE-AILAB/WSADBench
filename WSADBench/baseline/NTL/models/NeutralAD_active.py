@@ -126,9 +126,19 @@ class ActiveAD_trainer:
             loss_n, loss_a = self.loss_fun(z)
 
             score = loss_n-loss_a
-            _, idx_neg = torch.topk(score, int(score.shape[0] * (1-ratio)), largest=False,
+            # print(f'need:{int(score.shape[0] * (1 - ratio))}, limit:{score.shape[0] - 1}')
+            # k = int(score.shape[0] * (1 - ratio))
+            # k = min(k, )  # 防止越界
+            neg_num = int(score.shape[0] * (1 - ratio))
+            pos_num = int(score.shape[0] * ratio)
+            # 加个约束，防止个数越上下界
+            # 加个约束，防止个数越上下界
+            neg_num = max(1, min(neg_num, score.shape[0] - 1))  # 至少1个，最多N-1个
+            pos_num = max(1, min(pos_num, score.shape[0] - neg_num))  # 至少1个，且不超过剩下的
+
+            _, idx_neg = torch.topk(score, neg_num, largest=False,
                                                  sorted=False)
-            _, idx_pos = torch.topk(score, int(score.shape[0] * ratio), largest=True, sorted=False)
+            _, idx_pos = torch.topk(score, pos_num, largest=True, sorted=False)
             loss = torch.cat([loss_n[idx_neg], 0.5 * loss_a[idx_pos] + 0.5 * loss_n[idx_pos]], 0)
             loss_mean = loss.mean()
 

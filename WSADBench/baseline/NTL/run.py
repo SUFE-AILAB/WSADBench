@@ -27,6 +27,7 @@ class NTL:
         verbose=True,
         train_method=None,
         query_method=None,
+        query_num=None,
     ):
         self.utils = Utils()
         self.device = self.utils.get_device(True)
@@ -42,6 +43,7 @@ class NTL:
         self.step_size = step_size
         self.train_method = train_method
         self.query_method = query_method
+        self.query_num = query_num
         # self.n_emb = n_emb
         # self.margin = margin
         # self.alpha = alpha
@@ -92,7 +94,7 @@ class NTL:
         batch_size = X_train.shape[0] // 5 + 1
         if self.verbose:
             print(
-                f"Start training RoSAS model, number of training samples: {X_train.shape[0]}, feature dimension: {X_train.shape[1]}"
+                f"Start training NTL model, number of training samples: {X_train.shape[0]}, feature dimension: {X_train.shape[1]}"
             )
 
         # Semi-supervised setting
@@ -126,10 +128,11 @@ class NTL:
             prt_step=self.prt_step,
             verbose=self.verbose,
             train_method=self.train_method,
-            query_method = self.query_method
+            query_method = self.query_method,
+            query_num = self.query_num,
         )
 
-        print("RoSAS model training completed")
+        print("NTL model training completed")
         return self
 
     def predict_score(self, X_test):
