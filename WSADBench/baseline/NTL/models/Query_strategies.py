@@ -40,7 +40,7 @@ def kmeans_diverse(embs, K,tau=0.01, labels=None):  # 没有label
         print(x[duplicated_mask])
         pass
 
-    check(embs_pos)
+    # check(embs_pos)
     if len(embs_pos) < K:  # 修正策略为，加入正样本
         # K = len(embs_pos)  # 确保 K 不超过正样本的数量
         print(f"error:############个数不足，K缩减为:{K}#############")
