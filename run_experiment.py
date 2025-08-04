@@ -394,8 +394,9 @@ class ExperimentRunner:
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
-            logger.info(f"已完成 {len(finished_experiments)} 个实验，跳过这些实验")
+            num_before_skip = len(experiment_params)
             experiment_params = [params for params in experiment_params if params not in finished_experiments]
+            logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
 
         if not experiment_params:
             logger.info("没有需要运行的实验，所有实验已完成或跳过")
