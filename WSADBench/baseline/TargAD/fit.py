@@ -55,6 +55,7 @@ def shuffle_u(X, Y):
     random_index = np.random.permutation(X.shape[0])
     return X[random_index], Y[random_index] 
     
+#！！！可能修改增加min(len(X),(i+1)*BATCH_SIZE)
 def getBatch(X, Y, BATCH_SIZE):
     while True:
         X, Y = shuffle_u(X, Y)
@@ -79,7 +80,7 @@ def calculate_discrepancy(logits):
     #输入：[n x f]
     #输出：[n x f]
     energy_discrepancy = []
-    energy = torch.logsumexp(logits, dim = 1)
+    energy = torch.logsumexp(logits, dim = 1) #[batch_size,]
     for i, i_logit in enumerate(logits):
         i_logit = i_logit.cpu().detach().numpy()
         i_logit = np.array(i_logit, dtype = np.float128)
@@ -201,9 +202,9 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
     # 真实过滤后的潜在异常是有大部分已知异常、未知异常以及困难正常
     # 若将过滤后的潜在异常全部作为ood，则不合适，所以需要设置权重，对于已知异常权重小，
     ood_data = X_deleted #[346,10]
-    ood_data_y_true = Y_deleted  #[346,]  # 真实标签
+    ood_data_y_true = Y_deleted  #[346,]  # 无标签，设为0
     # 分数越大，越异常越有可能是属于已知异常，权重越小
-    # 权重初始化,使权重在(0,1)之间
+    # 权重初始化,使权重在(0,1)之间，分数越小权重越大
     ood_data_w =  (np.max(score_delete) - score_delete) / (np.max(score_delete) - np.min(score_delete))
 
     # 簇(过滤后的可靠正常)+已知异常的标签
@@ -311,7 +312,7 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
         ood_data_w =  (np.max(con_confidence) - con_confidence) / (np.max(con_confidence) - np.min(con_confidence))
         gen_ood = getBatchWeigt(ood_data, ood_data_y, ood_data_w, ood_batch)   
 
-    """验证阶段，计算出最佳阈值，实现关注异常/不关注异常部分"""
+    """验证阶段，计算出最佳阈值，实现关注异常/正划分部分"""
     print("model 进入验证阶段, 开始实现Target功能......")
     model.eval()
     _, y_logit = model(torch.tensor(X_val).float().to(device))
@@ -363,7 +364,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
     entropy_all = []
     num_subgroups = num_centroid + num_anomaly_classes
     # 将已知异常的标签赋为1，正常为0，未知异常为-2
-    labels_ = copy.deepcopy(labels)  
+    labels_ = copy.deepcopy(labels)         #加载的数据集只有0，1标签 
     for i in range(num_anomaly_classes):
         labels_[(labels_ == num_centroid + i)] = 1
     labels_[(labels_ == -1)] = 0
@@ -388,7 +389,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
         for i in range(num_anomaly_classes):
             target_labels[(target_labels == num_centroid + i)] = 1
         target_labels[(target_labels == -1)] = 0
-        target_labels[(target_labels == -2)] = 0
+        target_labels[(target_labels == -2)] = 0      #这里与使用数据标签对上，变为0，1标签
         
         # prob_max = torch.max(probs, dim=1)[0]
         
@@ -417,7 +418,31 @@ def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,n
                     stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay,if_split,split_error, verbose=True):
     """
     整体训练流程函数：包括第一阶段（AE+聚类+筛选）与第二阶段（分类器+软标签训练）
-
+    Args:
+        X_train: 训练集特征
+        y_train: 训练集标签
+        model: 分类器模型
+        autoencoder: 自编码器模型
+        optimizer: 优化器
+        num_centroid: 聚类簇的数量
+        num_anomaly_classes: 异常类别的数量
+        stage_1_epochs: 第一阶段训练轮数
+        stage_2_epochs: 第二阶段训练轮数
+        kmeans_batch: kmeans的batch大小
+        stage_1_batch: 第一阶段batch大小
+        stage_2_batch: 第二阶段batch大小
+        anomaly_batch: 已知异常batch大小
+        ood_batch: 过滤后的潜在异常batch大小
+        device: 设备(cpu/gpu)
+        embedding_dim: 嵌入特征维度
+        loss_oe: ood_loss的权重系数
+        loss_re: 正则化损失的权重系数
+        stage_one_lr: 第一阶段学习率
+        stage_two_lr: 第二阶段学习率
+        weight_decay: 权重衰减系数
+        if_split: 是否划分验证集，True/False
+        split_error: 划分错误时的处理方式，"raise"/"auto"
+        verbose: 是否打印训练信息，True/False
     Returns:
         model: 训练好的分类器模型
         best_threshold: 用于识别已知异常的判决阈值
@@ -605,7 +630,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
         for i in range(x_unlabelled_e.shape[0]):
             # 计算样本间的欧式距离
             # x_unlabelled_e[i]表示unlabeled data的表征, 每个有64维
-            # x_labelled_eb表示labeled anomaly的表征大小为(batch_size,64)
+            # x_labelled_e表示labeled anomaly的表征大小为(batch_size,64)
             # 这里计算的是unlabeled_e与每一个labelled_e之间的欧式距离            # 对于每一个unlabeled_e都有batch_size个距离
             distance = nn.functional.pairwise_distance(x_unlabelled_e[i], x_labelled_e, p=2)
             # 取出batch_size个距离中最小的距离
@@ -624,7 +649,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
     # topk返回的是排名前k的值与对应的下标
     # 这里选取异常分数前5%的作为潜在异常
     scores, indexs = unlabelled_scores.topk(int(unlabelled_scores.shape[0] * filter), largest=True)
-    score_delete = unlabelled_scores[indexs.detach().numpy()].detach().numpy()
+    score_delete = unlabelled_scores[indexs.detach().numpy()].detach().numpy()   #异常分数
     
     # 潜在的异常
     X_deleted = X_unlabelled[indexs.detach().numpy()]
