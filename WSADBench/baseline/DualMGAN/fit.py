@@ -23,7 +23,7 @@ def to_tensor(x,device):  # array 转 tensor
 def sample_noise(batch_size, latent_size, device):
     return torch.rand(batch_size, latent_size, device=device)
 
-def fit_rosas(
+def fit_dual(
     train_x,
     train_semi_y,
     batch_size,
@@ -504,18 +504,7 @@ def fit_rosas(
             best_model = copy.deepcopy(discriminator_all)
     return best_model
 
-def predict_rosas(model,  x_test, device):
-    """
-    RoSAS模型预测函数
-
-    Args:
-        model: 训练好的模型
-        x_test: 测试数据
-        device: 设备
-
-    Returns:
-        anomaly_scores: 异常分数
-    """
+def predict(model,  x_test, device):
     model.eval()
     with torch.no_grad():
         xx = torch.from_numpy(x_test).float().to(device)

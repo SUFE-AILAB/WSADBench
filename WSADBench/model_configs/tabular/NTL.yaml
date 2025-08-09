@@ -1,4 +1,4 @@
-# RoSAS模型配置文件
+# NTL模型配置文件
 # 指定模型类和参数
 
 # 模型类路径
@@ -16,14 +16,4 @@ parameters:
   query_method: 'kmeans'  # 论文里是kmeans
   query_num: 20 # 论文里是20,但rla过低时，会负样本不足（目前是负样本够的时候不用正样本。不够的时候，再用正样本补满）
 
-#  # 模型架构参数
-#  n_emb: 128
-#  margin: 2.0
-#  alpha: 0.5
-#  beta: 1.0
-#  T: 2
-#  k: 2
-
-  # 其他参数
-#  score_loss: "smooth"
   verbose: true

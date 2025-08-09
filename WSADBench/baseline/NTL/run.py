@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from WSADBench.myutils import Utils
 from WSADBench.baseline.NTL.model import TabNeutralAD
-from WSADBench.baseline.NTL.fit import fit_rosas, predict_rosas
+from WSADBench.baseline.NTL.fit import fit_ntl, predict_rosas
 
 
 class NTL:
@@ -11,17 +11,9 @@ class NTL:
         seed,
         nbatch_per_epoch=16,
         epochs=100,
-        # batch_size=128,
-        # n_emb=128,
         lr=0.005,
         step_size = 200,
         gamma=0.5,
-        # margin=1.0,
-        # alpha=0.5,
-        # beta=1.0,
-        # T=2,
-        # k=2,
-        # score_loss="smooth",
         milestones=None,
         prt_step=10,
         verbose=True,
@@ -44,13 +36,6 @@ class NTL:
         self.train_method = train_method
         self.query_method = query_method
         self.query_num = query_num
-        # self.n_emb = n_emb
-        # self.margin = margin
-        # self.alpha = alpha
-        # self.beta = beta
-        # self.T = T
-        # self.k = k
-        # self.score_loss = score_loss
         self.milestones = milestones if milestones is not None else [epochs]
         self.prt_step = prt_step
         self.verbose = verbose
@@ -77,19 +62,6 @@ class NTL:
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=self.step_size, gamma=self.gamma)
 
     def fit(self, X_train, y_train, ratio=None):
-        """
-        Train RoSAS model
-
-        Args:
-            X_train: training feature data
-            y_train: training labels
-            ratio: unused, kept for interface consistency
-
-        Returns:
-            self: trained model instance
-        """
-        # self.model = TabNeutralAD(X_train.shape[1]) \
-        #     .to(self.device)
         # 单独算batch_size（5等分）
         batch_size = X_train.shape[0] // 5 + 1
         if self.verbose:
@@ -114,19 +86,14 @@ class NTL:
         self.model.to(self.device)  # 转GPU
         print(f'x_dim:{self.model.x_dim}')
         # Train model
-        self.model = fit_rosas(
+        self.model = fit_ntl(
             train_x=X_train,
             train_semi_y=semi_y,
             model=self.model,
-            criterion=self.criterion,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             epochs=self.epochs,
-            nbatch_per_epoch=self.nbatch_per_epoch,
             batch_size=batch_size,
-            device=self.device,
-            prt_step=self.prt_step,
-            verbose=self.verbose,
             train_method=self.train_method,
             query_method = self.query_method,
             query_num = self.query_num,
