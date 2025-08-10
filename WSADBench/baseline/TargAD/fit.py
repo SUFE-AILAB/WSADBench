@@ -471,6 +471,7 @@ def fit_TargAD_main(X_train, y_train,mask,model, autoencoder,optimizer,num_centr
     
     X_unlabelled = X_train[mask==0]        # [6999,10] 标签为0的无标签样本
     X_labelled_anomaly = X_train[mask==1]     # [1,10] 标签为1
+    print(f"最终输入的无标签样本数量: {len(X_unlabelled)}, 已知标签样本数量: {len(X_labelled_anomaly)}")
     # 标签为0的无标签样本和标签为1的已知异常样本
     Y_unlabelled = y_train[mask==0]         # [6999,] 标签为0的无标签样本
     Y_labelled_anomaly = y_train[mask==1]
