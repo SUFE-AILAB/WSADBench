@@ -33,7 +33,7 @@ class TargAD:
                  ood_batch=32,
                  stage_one_lr=0.0001,
                  stage_two_lr=0.00001,
-                 input_dim=10,    #输入数据特征维度，在fit过程中采用了动态输入
+                 input_dim=None,
                  embedding_dim=64,
                  loss_oe=0.1,
                  loss_re=1,
@@ -93,40 +93,29 @@ class TargAD:
         self.verbose = verbose
 
         #模型内部状态
-        # self.model1 = None
         self.model = None
         self.autoencoder = None
-        # self.optimizer1 = None
         self.optimizer = None
         self.scheduler = None
 
     def _init_model(self):
         """初始化模型"""
-            # 创建模型
-        
+        #第一阶段训练所需模型
         self.autoencoder = AutoEncoder(input_dim=self.input_dim, num_features=self.embedding_dim).to(self.device)  
-            
+        #第二阶段训练所需模型
         self.model = Classifier(input_dim=self.input_dim, num_features=self.embedding_dim, num_classes=self.num_subgroups).to(self.device)
 
-        # 创建优化器
-        # self.optimizer1 = optim.Adam(
-        #     self.model1.parameters(), lr=self.stage_one_lr, weight_decay=1e-6
-        # )
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=self.stage_two_lr, weight_decay=1e-6
         )
 
-        # # 创建学习率调度器
-        # if self.use_scheduler:
-        #     self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
 
         if self.verbose:
             print(f"TargAD模型初始化完成")
             print(f"设备: {self.device}")
-            # print(f"model1参数数量: {sum(p.numel() for p in self.model1.parameters()):,}")
             print(f"model参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self,X,y,X_test=None,y_test=None):
+    def fit(self,X,y,mask,X_test=None,y_test=None):
         """
         训练模型
         Args
@@ -144,18 +133,15 @@ class TargAD:
             print("=" * 60)
             print(f"训练样本数: {len(X)}")
             print(f"无标签样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
-        # 初始化模型
-        # input_dim = X.shape[1] if X.ndim > 1 else 1
         self._init_model()
         
         #训练模型
         self.training_history, self.model, self.best_threshold= fit_TargAD_main(
             X_train=X,
             y_train=y,
-            # model1=self.model1,
+            mask=mask,
             model=self.model,
             autoencoder=self.autoencoder,
-            # optimizer1=self.optimizer1,
             optimizer=self.optimizer,
             num_centroid=self.num_centroid,
             num_anomaly_classes=self.num_anomaly_classes,
@@ -167,7 +153,7 @@ class TargAD:
             anomaly_batch=self.anomaly_batch,
             ood_batch=self.ood_batch,
             device=self.device,
-            # input_dim = self.input_dim,
+            input_dim=self.input_dim,
             embedding_dim = self.embedding_dim,
             loss_oe=self.loss_oe,
             loss_re=self.loss_re,
@@ -226,10 +212,7 @@ class TargAD:
 
             try:
                 # 保存当前状态
-                # current_model1 = self.model1
                 current_model = self.model
-                # current_criterion = self.criterion
-                # current_optimizer1 = self.optimizer1
                 current_optimizer = self.optimizer
                 current_scheduler = self.scheduler
 
@@ -238,14 +221,10 @@ class TargAD:
 
                 # 计算参数
                 params = {"model": sum(p.numel() for p in self.model.parameters())}
-                # params["model2"] = sum(p.numel() for p in self.model2.parameters())  
                 params["total"] = params["model"]
 
                 # 恢复状态
-                # self.model1 = current_model1
                 self.model = current_model
-                # self.criterion = current_criterion
-                # self.optimizer1 = current_optimizer1
                 self.optimizer = current_optimizer
                 self.scheduler = current_scheduler
 
@@ -255,7 +234,6 @@ class TargAD:
                 return {"error": f"Failed to count parameters: {str(e)}"}
         else:
             params = {"model": sum(p.numel() for p in self.model.parameters())}
-            # params["model2"] = sum(p.numel() for p in self.model2.parameters())  
             params["total"] = params["model"]
             return params
 

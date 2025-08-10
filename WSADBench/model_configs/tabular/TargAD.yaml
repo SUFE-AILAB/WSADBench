@@ -29,7 +29,7 @@ parameters:
   loss_re: 1.0
 
   # 其他参数
-  if_split: true  #如果为false代表不划分验证集，直接用训练集计算Targ阈值  /  true的话代表需要划分
+  if_split: False  #如果为false代表不划分验证集，直接用训练集计算Targ阈值  /  true的话代表需要划分
   split_error: "auto"    #["raise", "auto"]  raise表示异常样本不够时报错，auto表示此情况切换为不划分
   verbose: true
 
