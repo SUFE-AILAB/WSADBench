@@ -50,6 +50,7 @@ class ModelRegistry:
             "REPEN": "WSADBench.baseline.REPEN.run.REPEN",
             "Sultani": "WSADBench.baseline.Sultani.run.Sultani",
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
+            "ARNet": "WSADBench.baseline.ARNet.run.ARNet",
             "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
             "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
@@ -57,6 +58,7 @@ class ModelRegistry:
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
+            "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
         }
         return default_model_map.get(model_name, None)
 
@@ -73,6 +75,7 @@ class ExperimentRunner:
         parameter_config_path=None,
         datasets=None,
         rla_list=None,
+        LAR_list=None,
         seed_list=None,
         gpu_list=None,
         DEBUG=False,
@@ -88,7 +91,8 @@ class ExperimentRunner:
             output_dir: 输出目录
             parameter_config_path: 参数配置文件路径
             datasets: 数据集列表
-            rla_list: 标注异常比例列表
+            rla_list: 有已知标签的数量列表
+            LAR_list: 有已知标签样本中异常样本的比例或数量列表
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
@@ -135,7 +139,8 @@ class ExperimentRunner:
 
         # 实验参数
         self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
-        self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
+        self.rla_list = rla_list if rla_list is not None else [2, 5, 10, 25, 50, 75, 100]  # 有已知标签的数量
+        self.LAR_list = LAR_list if LAR_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0] # 有已知标签样本中异常样本的比例或数量
 
         # 获取数据集列表
         if datasets is None:
@@ -157,6 +162,7 @@ class ExperimentRunner:
         logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
         logger.info(f"数据集数量: {len(self.datasets)}")
         logger.info(f"RLA设置: {self.rla_list}")
+        logger.info(f"LAR设置: {self.LAR_list}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -370,7 +376,7 @@ class ExperimentRunner:
         else:
             df.to_csv(result_file, index=False)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']}")
+        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},labeled_abnormal_ratio={result['labeled_abnormal_ratio']} 到 {result_file}")
 
     def _load_finish_exp(self):
         finished_experiments = set()
@@ -380,7 +386,7 @@ class ExperimentRunner:
             if detail_file.exists():
                 try:
                     df = pd.read_csv(detail_file)
-                    main_setting = df[["model", "dataset", "rla", "seed"]].drop_duplicates().to_numpy().tolist()
+                    main_setting = df[["model", "dataset", "rla","labeled_abnormal_ratio", "seed"]].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
                     pass
@@ -389,7 +395,7 @@ class ExperimentRunner:
     def run_experiments(self):
         """运行所有实验"""
         # 生成实验参数组合
-        experiment_params = list(product(self.models, self.datasets, self.rla_list, self.seed_list))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list, self.LAR_list,self.seed_list))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -464,8 +470,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","labeled_abnormal_ratio"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","labeled_abnormal_ratio"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -476,8 +482,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的时间
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
-        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
-        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
+        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","labeled_abnormal_ratio"])[metric].mean()
+        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","labeled_abnormal_ratio"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -662,16 +668,16 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla, seed = params
+    model_name, dataset_name, rla,labeled_abnormal_ratio, seed = params
 
     # 设置GPU环境
     if gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla}) 分配到 GPU {gpu_id}")
+        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},labeled_abnormal_ratio={labeled_abnormal_ratio}) 分配到 GPU {gpu_id}")
     else:
         # CPU模式
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla}) 使用 CPU 模式")
+        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},labeled_abnormal_ratio={labeled_abnormal_ratio}) 使用 CPU 模式")
 
     try:
         # 从配置中获取所需的组件
@@ -687,13 +693,15 @@ def run_single_experiment_with_gpu(params_with_config):
         # 生成数据
         data = data_generator.generator(
             la=rla,
+            labeled_abnormal_ratio = labeled_abnormal_ratio,
             at_least_one_labeled=True,
             la_shortage_mode="ignore",
+            unlabeled_processing= "0"    # 0表示将未标注数据标签设为0
         )
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla}) 没有标注异常，跳过")
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},labeled_abnormal_ratio={labeled_abnormal_ratio}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -721,6 +729,8 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["X_train"] = data["X_train"]
         if has_param(model.fit, "y_train"):
             train_input["y_train"] = data["y_train"]
+        if has_param(model.fit, "mask"):
+            train_input["mask"] = data["mask"]
         if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
@@ -779,6 +789,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "model": model_name,
             "dataset": dataset_name,
             "rla": rla,
+            "labeled_abnormal_ratio": labeled_abnormal_ratio,
             "seed": seed,
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
@@ -793,7 +804,7 @@ def run_single_experiment_with_gpu(params_with_config):
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla}): "
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},labeled_abnormal_ratio={labeled_abnormal_ratio}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
@@ -806,11 +817,12 @@ def run_single_experiment_with_gpu(params_with_config):
     except Exception as e:
         if DEBUG:
             raise e
-        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
+        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},labeled_abnormal_ratio={labeled_abnormal_ratio}): {str(e)}")
         return {
             "model": model_name,
             "dataset": dataset_name,
             "rla": rla,
+            "labeled_abnormal_ratio": labeled_abnormal_ratio,
             "seed": seed,
             "aucroc": np.nan,
             "aucpr": np.nan,
@@ -861,8 +873,16 @@ def main():
         "--rla_list",
         nargs="+",
         type=float,
-        default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
-        help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+        default=[2, 5, 10, 25, 50, 75, 100],
+        help="标注异常比例列表 (默认: 2 5 10 25 50 75 100)",
+    )
+
+    parser.add_argument(
+        "--LAR_list",
+        nargs="+",
+        type=float,
+        default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
+        help="标注异常比例列表 (默认:0.0 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",  #0.0表示normal only ; 1.0表示abnormal only
     )
 
     parser.add_argument(
@@ -911,14 +931,23 @@ def main():
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
-    # 预处理RLA列表
+    # 预处理RLA列表   设定选择有已知标签的样本数量
     _rla_list = []
     for rla in args.rla_list:
         if rla > 1:
             _rla_list.append(int(rla))
         else:
-            _rla_list.append(rla)
+            raise ValueError(f"RLA值 {rla} 必须大于1")
     args.rla_list = _rla_list
+
+    # 预处理LAR列表  设定有已知标签样本中异常样本的比例(float)或者数量(int)
+    _LAR_list = []
+    for labeled_abnormal_ratio in args.LAR_list:
+        if labeled_abnormal_ratio > 1:
+            _LAR_list.append(int(labeled_abnormal_ratio))
+        else:
+            _LAR_list.append(labeled_abnormal_ratio)
+    args.LAR_list = _LAR_list
 
     # 处理GPU参数
     gpu_list = None
@@ -937,6 +966,7 @@ def main():
         parameter_config_path=args.parameter_config_path,
         datasets=args.datasets,
         rla_list=args.rla_list,
+        LAR_list=args.LAR_list,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
@@ -978,6 +1008,9 @@ python run_experiment.py --data_type tabular --models RoSAS --n_jobs 4
 # 指定特定数据集和RLA
 python run_experiment.py --data_type video --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0 --gpus auto
 
+# 使用特定的LAR比例
+python run_experiment.py --data_type video --models RoSAS --datasets cardio thyroid --rla_list 10 --LAR_list 0.1 0.5 --gpus auto
+
 # 指定随机种子
 python run_experiment.py --data_type tabular --models RoSAS --seed_list 1 2 3 4 5 --gpus 0,1
 
@@ -994,5 +1027,5 @@ python run_experiment.py --data_type video --dry_summary
 python run_experiment.py --data_type video --models Sultani --n_jobs 8 --gpus 0,1
 
 # 快速测试
-python run_experiment.py --data_type video --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1 --gpus 0
+python run_experiment.py --data_type video --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 10 --LAR_list 0.5 --n_jobs 1 --gpus 0
 """
