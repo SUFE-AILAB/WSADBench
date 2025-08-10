@@ -244,7 +244,7 @@ class DataGenerator:
         contam_ratio=1.00,
         noise_ratio: float = 0.05,
         la_shortage_mode="ignore",
-        unlabeled_processing = "0"
+        fill_normal = True
     ):
         """
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
@@ -423,7 +423,7 @@ class DataGenerator:
         # Step 3: 采样已知标签的异常和正常索引
         idx_labeled_anomaly = np.random.choice(idx_anomaly, num_labeled_abnormal, replace=False) if num_labeled_abnormal > 0 else np.array([], dtype=int)
         idx_labeled_normal = np.random.choice(idx_normal, num_labeled_normal, replace=False) if num_labeled_normal > 0 else np.array([], dtype=int)
-
+        idx_labeled = np.append(idx_labeled_normal, idx_labeled_anomaly)
         # Step 4: 剩下的异常和正常样本都作为unlabeled
         idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
         idx_unlabeled_normal = np.setdiff1d(idx_normal, idx_labeled_normal)
@@ -446,8 +446,13 @@ class DataGenerator:
         mask[idx_unlabeled] = 0                   # 无标签索引处的mask设为 0
 
         #处理无标签样本方式：目前将无标签样本的标签设为0
-        if unlabeled_processing == "0":
+        if fill_normal == True:
             y_train[mask==0] = 0
+        elif fill_normal == "none":
+            # 丢弃无标签样本
+            X_train = X_train[idx_labeled]
+            y_train = y_train[idx_labeled]
+            mask = mask[idx_labeled]
 
         result = {
             "X_train": X_train,

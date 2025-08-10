@@ -696,7 +696,7 @@ def run_single_experiment_with_gpu(params_with_config):
             labeled_abnormal_ratio = labeled_abnormal_ratio,
             at_least_one_labeled=True,
             la_shortage_mode="ignore",
-            unlabeled_processing= "0"    # 0表示将未标注数据标签设为0
+            fill_normal= True    # True表示将未标注数据标签设为0，False表示保持原始标签, "none"表示丢弃无标签样本
         )
 
         # 检查数据有效性

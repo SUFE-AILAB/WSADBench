@@ -145,7 +145,7 @@ class AABiGAN:
             print(f"Discriminator parameters: {sum(p.numel() for p in self.discriminator.parameters()):,}")
 
     def fit(
-        self, X_train: Union[np.ndarray, torch.Tensor], y_train: np.ndarray, ratio: Optional[float] = None
+        self, X_train: Union[np.ndarray, torch.Tensor], y_train: np.ndarray,mask, ratio: Optional[float] = None
     ) -> "AABiGAN":
         """
         训练AABiGAN模型
@@ -204,6 +204,7 @@ class AABiGAN:
             X_train=X_train_tensor,
             y_train=y_train,
             X_aux=X_aux,
+            mask=mask,
             generator=self.generator,
             encoder=self.encoder,
             discriminator=self.discriminator,
