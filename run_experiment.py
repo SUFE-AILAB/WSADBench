@@ -732,6 +732,8 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["X_train"] = data["X_train"]
         if has_param(model.fit, "y_train"):
             train_input["y_train"] = data["y_train"]
+        if has_param(model.fit, "mask"):
+            train_input["mask"] = data["mask"]
         if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
