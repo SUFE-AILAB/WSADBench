@@ -11,7 +11,8 @@ from typing import Tuple, Dict, Any, Optional, List
 import time
 from WSADBench.baseline.MGFN.model import new_feature
 from torch import nn
-from myUtils import myLogger as logging
+from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
+
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 

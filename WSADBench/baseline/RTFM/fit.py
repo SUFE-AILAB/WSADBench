@@ -14,7 +14,8 @@ import numpy as np
 import torch
 torch.set_default_tensor_type('torch.FloatTensor')
 from torch.nn import MSELoss
-from myUtils import myLogger as logging
+from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
+
 
 
 
