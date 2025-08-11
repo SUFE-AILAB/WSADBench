@@ -11,44 +11,6 @@ import numpy as np
 from torch import nn, einsum
 from einops import rearrange
 
-# class MGFNLearner(nn.Module):  # 没实现这个。。
-#     """
-#     Sultani MIL学习器
-#     基于原始实现的深度MIL分类器
-#     """
-#     def __init__(self):
-#         """
-#         初始化Sultani学习器
-#
-#         Args:
-#             input_dim: 输入特征维度（默认2048，对应ResNet特征）
-#             drop_p: Dropout概率
-#         """
-#         super(MGFNLearner, self).__init__()
-#         # 创建参数列表用于meta learning（可选）
-#         self.vars = nn.ParameterList()
-#         for param in self.classifier.parameters():
-#             self.vars.append(param)
-#         # 添加
-#     def forward(self, x, vars=None):
-#         if vars is None:
-#             # 标准前向传播
-#             return self.classifier(x)
-#         else:
-#             # 使用自定义参数的前向传播（用于meta learning）
-#             x = F.linear(x, vars[0], vars[1])
-#             x = F.relu(x)
-#             x = F.dropout(x, self.drop_p, training=self.training)
-#             x = F.linear(x, vars[2], vars[3])
-#             x = F.relu(x)
-#             x = F.dropout(x, self.drop_p, training=self.training)
-#             x = F.linear(x, vars[4], vars[5])
-#             return torch.sigmoid(x)
-#
-#     def get_vars(self):
-#         """获取模型参数列表"""
-#         return self.vars
-
 def init_weights_xavier(module):
     """
     Xavier权重初始化函数
@@ -79,37 +41,31 @@ def count_parameters(model):
 
 
 
-def new_feature(feat: np.ndarray) -> torch.Tensor:  # 没验证
+import numpy as np
+import torch
+
+def new_feature(feat: np.ndarray) -> torch.Tensor:
     """
     根据给定的特征批次，计算每个特征段的幅度信息，
     并将其拼接回特征，最终调整维度。
+
     Args:
-        feat (np.ndarray): 输入特征数组，形状为 (batch, seg, feature_dim)。
-                          例如 (30, 32, 2048)
+        feat (np.ndarray): 输入特征数组，形状为 (batch, ncrop, seg, feature_dim)。
+                           例如 (30, 10, 32, 2048)
 
     Returns:
-        np.ndarray: 处理后的特征数组，形状为 (batch, 1, seg, feature_dim + 1)。
-                    例如 (30, 1, 32, 2049)
+        torch.Tensor: 处理后的特征数组，形状为 (batch, ncrop, seg, feature_dim + 1)。
+                      例如 (30, 10, 32, 2049)
     """
-    # 1. 计算每个特征段的幅度 (L2范数)
-    # 输入 feat 的形状是 (batch, seg, feature_dim)
-    # 我们需要在最后一个维度 (feature_dim) 上计算范数
-    # 结果形状会是 (batch, seg)
-    feature_mag = np.linalg.norm(feat, axis=2)
+    # 计算每个特征向量的幅度（最后一个维度是 feature_dim）
+    feature_mag = np.linalg.norm(feat, axis=-1, keepdims=True)  # shape: (batch, ncrop, seg, 1)
 
-    # 2. 为幅度信息添加一个新的维度，使其形状变为 (batch, seg, 1)
-    # 这样才能与原始特征在最后一个维度上进行拼接
-    feature_mag = feature_mag[:, :, np.newaxis]
+    # 拼接幅度到原特征
+    combined_feat = np.concatenate((feat, feature_mag), axis=-1)  # shape: (batch, ncrop, seg, feature_dim + 1)
 
-    # 3. 将幅度信息拼接回原始特征
-    # 拼接后形状变为 (batch, seg, feature_dim + 1)
-    combined_feat = np.concatenate((feat, feature_mag), axis=2)
+    # 转换为 torch.Tensor
+    return torch.from_numpy(combined_feat)
 
-    # 4. 根据输出要求，在第二个维度 (索引为1) 添加一个大小为1的新维度
-    # 最终形状变为 (batch, 1, seg, feature_dim + 1)
-    output_feat = np.expand_dims(combined_feat, axis=1)
-
-    return torch.from_numpy(output_feat)
 
 def exists(val):
     return val is not None
