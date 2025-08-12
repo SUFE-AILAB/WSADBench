@@ -5,14 +5,15 @@
 model_class: WSADBench.baseline.MGFN.run.MGFN
 
 parameters:
-  channels: 2048
+  input_dim: 2048
   dropout: 0.7
-  epochs: 5
+  epochs: 100  # 默认是
   batch_size: 16 # 8个normal和8个异常
   learning_rate: 0.001
   weight_decay:  0.0005
   depths: [3, 3, 2]  # 不写tuple，写list
   mgfn_types: ['gb', 'fb', 'fb']
   mag_ratio: 0.1
+  seg: 32
 
   # α = 0 1, k = 3, λ1 = λ2 = 1, λ3 = 0 001.

@@ -192,18 +192,19 @@ def new_feature(feat: np.ndarray) -> torch.Tensor:
 class rtfm(nn.Module):
     def __init__(
         self,
-        n_features, batch_size
+        input_dim, batch_size
     ):
         super().__init__()
 
         ####
+        self.input_dim = input_dim
         self.batch_size = batch_size
         self.num_segments = 32
         self.k_abn = self.num_segments // 10
         self.k_nor = self.num_segments // 10
 
         self.Aggregate = Aggregate(len_feature=2048)
-        self.fc1 = nn.Linear(n_features, 512)
+        self.fc1 = nn.Linear(input_dim, 512)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, 1)
 

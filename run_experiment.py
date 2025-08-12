@@ -751,6 +751,9 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
+        if has_param(model.fit, "X_test"):
+            train_input["X_test"] = [data["X_test"],data_shape,data["y_test_idx"],data["y_test_gt"], data["y_test_gt_idx"], data["NUM_FRAMES"]]
+
         pred_func = None
         if hasattr(model, "predict_score"):
             pred_func = model.predict_score

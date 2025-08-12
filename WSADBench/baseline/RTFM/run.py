@@ -30,7 +30,8 @@ class RTFM:
 
         # 其他参数
         verbose: bool = True,
-        n_features =None
+        input_dim: int = 2048,
+        seg = None,
     ):
         self.seed = seed  # 形成可变参数
         self.dropout = dropout  #
@@ -56,13 +57,14 @@ class RTFM:
         self.utils.set_seed(seed)
         self.device = self.utils.get_device(True)
         #
-        self.n_features = n_features
+        self.input_dim = input_dim
+        self.seg = seg
 
     def _init_model(self):
         """初始化模型"""
         if self.model is None:
             #  创建模型(传参）
-            self.model = rtfm( n_features=self.n_features,batch_size= self.batch_size).to(self.device)
+            self.model = rtfm( input_dim=self.input_dim,batch_size= self.batch_size).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adam(
@@ -74,7 +76,7 @@ class RTFM:
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y, X_test=None, y_test=None):
+    def fit(self, X, y,  vid_source_clips_num=None,  X_test=None, y_test=None, crops_num=None):
         start_time = time.time()
         if self.verbose:
             print("=" * 60)
@@ -88,6 +90,9 @@ class RTFM:
         self._init_model()
         # 训练模型
         self.training_history = fit_main(
+            trainer = self,
+            X_test=X_test,
+            # y_test=y_test,
             X_train=X,
             y_train=y,
             model=self.model,
@@ -96,6 +101,7 @@ class RTFM:
             batch_size=self.batch_size,
             device=self.device,
             verbose=self.verbose,
+            clip_num=vid_source_clips_num,  crops_num=crops_num
         )
 
         self.fitted = True

@@ -6,11 +6,12 @@ model_class: WSADBench.baseline.RTFM.run.RTFM
 # 模型参数
 parameters:
   dropout: 0.7
-  epochs: 1
-  batch_size: 32
+  epochs: 50
+  batch_size: 64
   learning_rate: 0.001
   weight_decay:  0.0005
-  n_features: 2048
+  input_dim: 2048
+  seg: 32
 
 # parameters:
 #   dropout: 0.7

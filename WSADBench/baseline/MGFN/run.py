@@ -8,7 +8,7 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.MGFN.model import mgfn
-from WSADBench.baseline.MGFN.fit import fit_mgfn_main
+from WSADBench.baseline.MGFN.fit import fit_mgfn_main_with_crops
 from tqdm import tqdm
 
 class MGFN:
@@ -22,7 +22,7 @@ class MGFN:
         self,
         seed: int = 42,
         # 模型参数
-        channels: int = None,
+        input_dim: int = None,
         dropout: float = None,
         # 训练参数
         epochs: int = 5,
@@ -32,7 +32,7 @@ class MGFN:
         depths: Tuple[int, int, int] = None,  # 写list
         mgfn_types: Tuple[str, str, str] = None,
         # 其他参数
-        segments_per_video: int = 32,
+        seg: int = 32,
         verbose: bool = True,
         mag_ratio = None
     ):
@@ -42,13 +42,14 @@ class MGFN:
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.segments_per_video = segments_per_video
+
         self.verbose = verbose
         # 等yaml参数
         self.mag_ratio =mag_ratio
         self.depths=depths
         self.mgfn_types =mgfn_types
-        self.channels = channels
+        self.input_dim = input_dim
+        self.seg = seg
         # 内部状态
         self.model = None
         self.optimizer = None
@@ -56,6 +57,8 @@ class MGFN:
         self.device = None
         self.fitted = False
         self.training_history = None
+
+
 
         # 工具类
         self.utils = Utils()
@@ -69,7 +72,7 @@ class MGFN:
         if self.model is None:
             #  创建模型(传参）
             self.model = mgfn(batch_size= self.batch_size, drop_p=self.dropout,mag_ratio=self.mag_ratio,
-                              depths=self.depths, mgfn_types=self.mgfn_types,channels=self.channels).to(self.device)
+                              depths=self.depths, mgfn_types=self.mgfn_types,channels=self.input_dim).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adagrad(
@@ -85,7 +88,7 @@ class MGFN:
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y, X_test=None, y_test=None):
+    def fit(self, X, y, X_test=None, y_test=None, vid_source_clips_num=None, crops_num=None):
         start_time = time.time()
         if self.verbose:
             print("=" * 60)
@@ -98,15 +101,18 @@ class MGFN:
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_mgfn_main(
+        self.training_history = fit_mgfn_main_with_crops(
             X_train=X,
             y_train=y,
+            X_test = X_test,
+            trainer = self,  # 为了调用预测
             model=self.model,
             optimizer=self.optimizer,
             epochs=self.epochs,
             batch_size=self.batch_size,
             device=self.device,
             verbose=self.verbose,
+            clip_num=vid_source_clips_num, crops_num=crops_num,
         )
 
         self.fitted = True

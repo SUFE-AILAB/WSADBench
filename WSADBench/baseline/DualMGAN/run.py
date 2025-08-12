@@ -2,7 +2,7 @@
 import numpy as np
 from WSADBench.myutils import Utils
 from WSADBench.baseline.DualMGAN.model import Args
-from WSADBench.baseline.DualMGAN.fit import fit_rosas, predict_rosas
+from WSADBench.baseline.DualMGAN.fit import fit_dual, predict
 # from WSADBench.baseline.DualMGA
 
 class DualMGAN:
@@ -66,7 +66,7 @@ class DualMGAN:
         batch_size = X_train.shape[0] // 5 + 1
         if self.verbose:
             print(
-                f"Start training NTL model, number of training samples: {X_train.shape[0]}, feature dimension: {X_train.shape[1]}"
+                f"Start training DualMGAN model, number of training samples: {X_train.shape[0]}, feature dimension: {X_train.shape[1]}"
             )
 
         # Semi-supervised setting
@@ -83,7 +83,7 @@ class DualMGAN:
 
         # Initialize model
         self._init_model(X_train.shape[1])
-        self.model = fit_rosas(
+        self.model = fit_dual(
             train_x=X_train,
             train_semi_y=semi_y,
             batch_size=batch_size,
@@ -109,7 +109,7 @@ class DualMGAN:
             raise ValueError("Model is not trained yet, please call fit method first")
 
         # Prediction
-        scores = predict_rosas(self.model, X_test, self.device)
+        scores = predict(self.model, X_test, self.device)
 
         return scores
 
