@@ -14,7 +14,7 @@ The default hyper-parameter is the same as in the original paper
 class PReNet():
     def __init__(self, seed:int, model_name='PReNet', epochs:int=50, batch_num:int=20, batch_size:int=512,
                 act_fun=nn.ReLU(), lr:float=1e-3, weight_decay:float=1e-2,
-                s_a_a=8, s_a_u=4, s_u_u=0):
+                s_a_a=8, s_a_u=4, s_u_u=0, norm="none"):
 
         self.seed = seed
         self.utils = Utils()
@@ -32,6 +32,8 @@ class PReNet():
         self.s_a_u = s_a_u
         self.s_u_u = s_u_u
 
+        self.norm = norm
+
     def fit(self, X_train, y_train, ratio=None):
 
         input_size = X_train.shape[1]  # input size
@@ -39,7 +41,7 @@ class PReNet():
         self.y_train = y_train
 
         self.utils.set_seed(self.seed)
-        self.model = prenet(input_size=input_size, act_fun=self.act_fun)
+        self.model = prenet(input_size=input_size, act_fun=self.act_fun, norm=self.norm)
         optimizer = torch.optim.RMSprop(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)  # optimizer
 
         # training

@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Any
 import torch
 import torch.multiprocessing as tmp
 from itertools import product
+from common_utils.argTypes import int_or_float
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -416,8 +417,9 @@ class ExperimentRunner:
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
-            logger.info(f"已完成 {len(finished_experiments)} 个实验，跳过这些实验")
+            num_before_skip = len(experiment_params)
             experiment_params = [params for params in experiment_params if params not in finished_experiments]
+            logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
 
         if not experiment_params:
             logger.info("没有需要运行的实验，所有实验已完成或跳过")
@@ -590,21 +592,11 @@ def generate_summary_only(output_dir):
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file)
+                    df = pd.read_csv(result_file,dtype={'rla':'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
                     logger.warning(f"读取结果文件失败 {result_file}: {e}")
-            else:
-                # 备用：查找带时间戳的旧格式文件
-                old_result_files = list(model_dir.glob(f"{model_name}_results_*.csv"))
-                for old_result_file in old_result_files:
-                    try:
-                        df = pd.read_csv(old_result_file)
-                        all_results.append(df)
-                        logger.info(f"读取旧格式结果文件: {old_result_file} ({len(df)} 条记录)")
-                    except Exception as e:
-                        logger.warning(f"读取结果文件失败 {old_result_file}: {e}")
 
     if not all_results:
         logger.warning("没有找到任何结果文件")
@@ -893,7 +885,7 @@ def main():
     parser.add_argument(
         "--rla_list",
         nargs="+",
-        type=float,
+        type=int_or_float,
         default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
         help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
