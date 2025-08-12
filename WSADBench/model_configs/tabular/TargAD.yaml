@@ -18,7 +18,7 @@ parameters:
   stage_two_lr: 0.00001
   # weight_decay: 1e-6
   num_centroid: 5
-  num_anomaly_classes: 2  # 可选值为1,2,3,4,5,6,7
+  num_anomaly_classes: 3  # 可选值为1,2,3,4,5,6,7
 
   # 模型架构参数
   embedding_dim: 64
@@ -29,7 +29,7 @@ parameters:
   loss_re: 1.0
 
   # 其他参数
-  if_split: true  #如果为false代表不划分验证集，直接用训练集计算Targ阈值  /  true的话代表需要划分
+  if_split: False  #如果为false代表不划分验证集，直接用训练集计算Targ阈值  /  true的话代表需要划分
   split_error: "auto"    #["raise", "auto"]  raise表示异常样本不够时报错，auto表示此情况切换为不划分
   verbose: true
 

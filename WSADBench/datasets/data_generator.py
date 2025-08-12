@@ -234,6 +234,8 @@ class DataGenerator:
         y=None,
         minmax=True,
         la=None,
+        eln=None,
+        target_for_unlabeled=None,
         at_least_one_labeled=False,
         realistic_synthetic_mode=None,
         alpha: int = 5,
@@ -242,12 +244,14 @@ class DataGenerator:
         duplicate_times: int = 2,
         contam_ratio=1.00,
         noise_ratio: float = 0.05,
-        la_shortage_mode="ignore",
+        shortage_mode="ignore",
     ):
         """
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
+        eln: relative labeled normal samples, can be either the ratio of labeled normal samples or the number of labeled normal samples
+        target_for_unlabeled: how to handle the unlabeled data, can be:"use_0", "use_-1", "use_1", "ignore"
         at_least_one_labeled: whether to guarantee at least one labeled anomalies in the training set
-        la_shortage_mode: behavior when anomaly count < required la
+        shortage_mode: behavior when anomaly count < required la
         - 'raise': raise error
         - 'ignore': return all available anomalies only
         """
@@ -397,39 +401,70 @@ class DataGenerator:
                 idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
         elif type(la) == int:
             if la > len(idx_anomaly):
-                if la_shortage_mode == "raise":
+                if shortage_mode == "raise":
                     raise AssertionError(
                         f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
-                        f'Please set a smaller la or change the la_shortage_mode to "ignore" or "duplicate".'
+                        f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
                     )
-                elif la_shortage_mode == "ignore":
+                elif shortage_mode == "ignore":
                     idx_labeled_anomaly = idx_anomaly
                 else:
-                    raise NotImplementedError(f"la_shortage_mode {la_shortage_mode} is not implemented!")
+                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
             else:
                 idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
         else:
             raise NotImplementedError
+        
+        if type(eln) == float:
+            if at_least_one_labeled:
+                idx_labeled_normal= np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+            else:
+                idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+        elif type(eln) == int:
+            if eln > len(idx_normal):
+                if shortage_mode == "raise":
+                    raise AssertionError(
+                        f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
+                        f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                    )
+                elif shortage_mode == "ignore":
+                    idx_labeled_normal = idx_normal
+                else:
+                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+            else:
+                idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
+        else:
+            raise NotImplementedError
 
         idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
+        idx_unlabeled_normal = np.setdiff1d(idx_normal, idx_labeled_normal)
         # whether to remove the anomaly contamination in the unlabeled data
         if noise_type == "anomaly_contamination":
             idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
 
         # unlabel data = normal data + unlabeled anomalies (which is considered as contamination)
-        idx_unlabeled = np.append(idx_normal, idx_unlabeled_anomaly)
+        idx_unlabeled = np.append(idx_unlabeled_normal, idx_unlabeled_anomaly)
 
         del idx_anomaly, idx_unlabeled_anomaly
 
-        # the label of unlabeled data is 0, and that of labeled anomalies is 1
-        y_train[idx_unlabeled] = 0
-        y_train[idx_labeled_anomaly] = 1
+        # that of labeled anomalies is 1
+        y_train[idx_labeled_anomaly] = 1 
+        #设置掩码区分出有标签和无标签样本
+        mask = np.ones_like(y_train, dtype=int)
+        mask[idx_unlabeled] = 0     #无标签索引处赋值为0
+
+        if target_for_unlabeled == "fill_unlabel_0":
+            y_train[mask == 0] = 0  # 无标签样本的标签为0
+        elif target_for_unlabeled == "delete_sample":  #只使用有标签样本
+            X_train = X_train[mask == 1]
+            y_train = y_train[mask == 1]
 
         result = {
             "X_train": X_train,
             "y_train": y_train,
             "X_test": X_test,
             "y_test": y_test,
+            "mask": mask
         }
 
         if data is not None and isinstance(data, dict):

@@ -4,7 +4,7 @@ model_class: WSADBench.baseline.ARNet.run.ARNet
 # 模型参数
 parameters:
   # 训练参数
-  # dropout: 0.7
+  dropout: 0.7
   model_name: "model_single"  # 可选值: model_single, model_mean, model_sequence, model_concatcate
   epochs: 20
   batch_size: 30
@@ -15,6 +15,6 @@ parameters:
   Center_weight: 20.000
   # 其他
   # max_seqlen: 300 # 最大序列长度750
-  # segments_per_video: 300  # 每个视频的片段数
-  # k: 4
+  segments_per_video: 32  # 每个视频的片段数
+  k: 4
 

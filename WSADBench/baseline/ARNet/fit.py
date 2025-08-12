@@ -36,7 +36,7 @@ def KMXMILL_individual(y_pred,                       #y_pred = y_pred
                        seq_len,
                        labels,
                        device,
-                       args,
+                       k=4,
                        loss_type='CE',
                        ):
 
@@ -49,38 +49,19 @@ def KMXMILL_individual(y_pred,                       #y_pred = y_pred
     :param loss:
     :return:
     """
-    # [train_video_name, start_index, len_index] = stastics_data
     seq_len = seq_len.cpu().numpy()
-    k = np.ceil(seq_len/args.k).astype('int32')     # k为1维，size=60，且每个值为8
+    k = np.ceil(seq_len/k).astype('int32')     # k为1维，size=60，且每个值为8
     instance_logits = torch.zeros(0).to(device)
-    real_label = torch.zeros(0).to(device)
-    # print(f'y_pred shape: {y_pred.shape}')       #[120,32]
+    real_label = torch.zeros(0).to(device)     #[120,32]
     real_size = int(y_pred.shape[0])       #120
-    # print(f'real_size:,{real_size}') 
-    # print(f"labels: {labels.shape}")  #[120,1]
-    # because the real size of a batch may not equal batch_size for last batch in a epoch
     for i in range(real_size):
         tmp, tmp_index = torch.topk(y_pred[i][:seq_len[i]], k=int(k[i]), dim=0) #挑选前k[i]个最大分数（即异常置信度最高的k个clip）
-        # top_index = np.zeros(len_index[i].numpy())           #tmp:一维，16个数
-        # top_predicts = np.zeros(len_index[i].numpy())
-        # top_index[tmp_index.cpu().numpy() + start_index[i].numpy()] = 1
-        # if train_video_name[i][0] in log_statics:
-        #     log_statics[train_video_name[i][0]] = np.concatenate((log_statics[train_video_name[i][0]], np.expand_dims(top_index, axis=0)),axis=0)
-        # else:
-        #     log_statics[train_video_name[i][0]] = np.expand_dims(top_index, axis=0)
         instance_logits = torch.cat((instance_logits, tmp), dim=0)    #[sum(k[i])]
         
-        # label_i = labels[i].max().item()  # 只要存在一个为1则判为异常,视频级标签
         if labels[i] == 1:
             real_label = torch.cat((real_label, torch.ones((int(k[i]), 1)).to(device)), dim=0)
         else:
             real_label = torch.cat((real_label, torch.zeros((int(k[i]), 1)).to(device)), dim=0)
-        #real_label的shape为[480,1]
-        #让每个cilp与视频标签对齐  （按原论文要求添加修改）
-        # if real_label.ndim == 2:  # [N, 1]
-        #     real_label = real_label.unsqueeze(1)  # [N, 1, 1]
-        # real_label = real_label.expand(-1, instance_logits.shape[1], -1)  # [N, k, 1]
-    # instance_logits = instance_logits.unsqueeze(1)       #[480,] -> [480,1]  对齐和real_label的维度
     real_label = real_label.squeeze(1)
     if loss_type == 'CE':
         milloss = binary_CE_loss(input=instance_logits, target=real_label)
@@ -103,13 +84,10 @@ def normal_smooth(y_pred, labels, device):
     """
     normal_smooth_loss = torch.zeros(0).to(device)
     real_size = int(y_pred.shape[0])
-    # print(f'real_size from normal_smooth:,{real_size}')
     # because the real size of a batch may not equal batch_size for last batch in a epoch
     for i in range(real_size):
-        # label_i = labels[i].max().item()  # 只要存在一个为1则判为异常,视频级标签!!!!这行代码需要检查
         if labels[i] == 0:
             normal_smooth_loss = torch.cat((normal_smooth_loss, torch.var(y_pred[i],unbiased=False).unsqueeze(0)))  #有偏估计计算方差，无标签0样本时返回合理值0而非NaN
-           #未计算出normal_smooth_loss
     # 处理无标签0样本的情况
         else:
             # 标签非0时添加值为0的1维张量
@@ -121,7 +99,7 @@ def normal_smooth(y_pred, labels, device):
 
 
 #计算总损失
-def total_loss(y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,Center_weight=20.000):
+def total_loss(y_pred, batch_size,seq_len,labels,device,k,DMIL_weight=1.000,Center_weight=20.000):
     """
     计算总损失函数，它包括两个部分：KMXMILL_individual 和 normal_smooth
 
@@ -134,50 +112,18 @@ def total_loss(y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,C
     :param args: 参数设置
     :return: 计算得到的总损失
     """
-    #！！！！！这里报错y_pred还不是tensor形式
-    # y_pred = y_pred.squeeze(2)    #[60, 32, 1] -> [60, 32]  
     device = y_pred.device
     # # 重塑预测结果
-    batch_size = y_pred.shape[0]                                       #插个点，有可能是把y_pred展平
+    batch_size = y_pred.shape[0]                                     
     y_pred = y_pred.view(batch_size, -1)            #展平，[120,32,1] -> [120,32] 
 
 
-    # for i, data in enumerate(train_loader):     # i为索引 ， data为加载的视频数据   #报错，train_loader没传入数据
-    # # for i in range(batch_size):
-
-    #         # 1. 拼接异常和正常样本特征
-    #     [anomaly_features, normaly_features], [anomaly_label, normaly_label], stastics_data = data
-    #     features = torch.cat((anomaly_features.squeeze(0), normaly_features.squeeze(0)), dim=0)
-    #     # print(f"features shape: {features.shape}")  # [120, 60, 10, 2048]       
-    #     videolabels = torch.cat((anomaly_label.squeeze(0), normaly_label.squeeze(0)), dim=0)
-        
-    #     # 先在 feature 维上 max（最后一维）
-    #     x = torch.max(features.abs(), dim=2)[0]  # [120, 60, 10]
-    #     # 再在 frame 维上 max
-    #     mask = torch.max(x, dim=1)[0] > 0        # [120, 60]
-    #     seq_len = mask.sum(dim=0).cpu().numpy()  # [120,]
-    #     print(f"seq_len: {seq_len.shape}")  # [batch_size,]
-    #     features = features[:, :np.max(seq_len), :]
-    #     print(f"features shape: {features.shape}") 
-
-    #     # features = torch.from_numpy(features).float().to(device)
-    #     features = features.float().to(device)
-    #     videolabels = videolabels.float().to(device)
-    #     # final_features, y_pred_linear, y_pred = model(features)
-    #     final_features, y_pred = model(features)
-    #     # if args.model_name == 'model_lstm':
-    #     #     final_features, y_pred = model(features, seq_len)
-    #     # else:
-    #     #     final_features, y_pred = model(features)
-    #     DMIL_weight=1.000
-    #     Center_weight=20.000
-    # with torch.no_grad():   #包装不需要梯度计算的部分，释放中间变量
     m_loss = KMXMILL_individual(y_pred=y_pred,
                                 seq_len=seq_len,
                                 labels=labels,
                                 device=device,
                                 loss_type='CE',
-                                args=args
+                                k=k
                                 )
     n_loss = normal_smooth(y_pred=y_pred,
                             labels=labels,
@@ -188,7 +134,7 @@ def total_loss(y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,C
 
     return total_loss
 
-def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_weight=1.000,Center_weight=20.000,  #seq_len为lstm添加
+def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_size,device,k=4,DMIL_weight=1.000,Center_weight=20.000,  #seq_len为lstm添加
           verbose=True,scheduler=None):
     """
     训练ARNeet模型
@@ -198,6 +144,9 @@ def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_wei
         optimizer: 优化器
         train_loader: 训练数据加载器
         epochs: 训练轮数
+        batch_size: 批量大小
+        labels: 视频级标签
+        model_name: ARNet中模型名称（用于处理不同模型的前向传播）
         device: 计算设备
         DMIL_weight: DMIL损失权重
         Center_weight:中心损失权重
@@ -230,36 +179,26 @@ def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_wei
         for batch_idx, (normal_data, anomaly_data) in enumerate(train_loader):
             optimizer.zero_grad()
             
-            # 将数据移到设备    注意下，插个眼   shape[60,32,2048]  B,T,F
+            # 将数据移到设备     shape[60,32,2048]  B,T,F
             normal_data = normal_data.to(device)
             anomaly_data = anomaly_data.to(device)
-            
-            batch_size = normal_data.shape[0]
             
             # 合并正常和异常数据 [batch_size, 32, feature_dim]
             # 前32个为异常，后32个为正常  -> [B*2,32,2048]
             inputs = torch.cat([anomaly_data, normal_data], dim=0)   #改
             
             # 前向传播
-            # final_features, y_pred = model(inputs)  # [batch_size*2, 32, 1]   #发现model(inputs)有两个返回 ,忽略原模型输出x(特征)
-            
             # 动态创建序列长度张量
             seq_len = torch.sum(torch.max(inputs.abs(), dim=2)[0] > 0, dim=1).to(device)  
             #lstm和其他模型不同
-            if args.model_name == 'model_lstm':
+            if model_name == 'model_lstm':
                 _, y_pred = model(inputs, seq_len)
             else:
                 _, y_pred = model(inputs)
             
-            # print(f"y_pred的shape:{y_pred.shape}") #[120,32,1]
-            # ## 确保video_labels不为None
-            # if labels is None:
-            #     raise ValueError("labels must be provided")
-
-            # 计算损失
             # 计算损失
             loss = total_loss(
-                y_pred, batch_size,seq_len,labels,device,args,DMIL_weight=1.000,Center_weight=20.000
+                y_pred, batch_size,seq_len,labels,device,k=4,DMIL_weight=1.000,Center_weight=20.000
             )
             
             # 反向传播
@@ -300,7 +239,7 @@ def fit_ARNet(model, labels,optimizer, train_loader, epochs,device,args,DMIL_wei
     return train_history
 
 
-def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device,     #seq_len为lstm添加
+def fit_ARNet_main(X_train, y_train, model,model_name,optimizer,segments_per_video, epochs, batch_size, device,k,    #seq_len为lstm添加
                       DMIL_weight,Center_weight, verbose=True):
     # global train_loader
     """
@@ -349,7 +288,6 @@ def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device
     data_len = len(X_normal)
     
     # 重塑数据为视频段格式
-    segments_per_video = 32
     segments_num = data_len // segments_per_video 
     #reshape为->[7960,32]
     X_normal_videos = X_normal[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
@@ -372,6 +310,5 @@ def fit_ARNet_main(X_train, y_train, model,optimizer, epochs, batch_size, device
     # 创建参数对象
     args = argparse.Namespace(k=4, model_name='model_concatcate')    #可根据需要修改参数，目前model_single,model_mean,model_sequence,model_concatcate是OK的
     # 调用主训练函数
-    return fit_ARNet(model ,labels,optimizer, train_loader, epochs, device,args,       #seq_len为lstm添加
+    return fit_ARNet(model ,labels,model_name,optimizer, train_loader, epochs,batch_size, device,k,       #seq_len为lstm添加
                       DMIL_weight, Center_weight,verbose=True)
-    

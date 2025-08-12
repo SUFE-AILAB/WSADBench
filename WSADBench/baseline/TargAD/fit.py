@@ -55,6 +55,7 @@ def shuffle_u(X, Y):
     random_index = np.random.permutation(X.shape[0])
     return X[random_index], Y[random_index] 
     
+#！！！可能修改增加min(len(X),(i+1)*BATCH_SIZE)
 def getBatch(X, Y, BATCH_SIZE):
     while True:
         X, Y = shuffle_u(X, Y)
@@ -79,7 +80,7 @@ def calculate_discrepancy(logits):
     #输入：[n x f]
     #输出：[n x f]
     energy_discrepancy = []
-    energy = torch.logsumexp(logits, dim = 1)
+    energy = torch.logsumexp(logits, dim = 1) #[batch_size,]
     for i, i_logit in enumerate(logits):
         i_logit = i_logit.cpu().detach().numpy()
         i_logit = np.array(i_logit, dtype = np.float128)
@@ -196,14 +197,17 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
         print(f"设备: {device}")
 
     # 得到已知异常的batch
+    if anomaly_batch > len(X_labelled_anomaly):  #避免超出异常
+        anomaly_batch = len(X_labelled_anomaly)
+        # raise ValueError(f"异常样本数量不足，已知异常样本数量为{len(X_labelled_anomaly)}，请调整anomaly_batch参数，目前已自动调整为现有数量")
     gen_anomaly = getBatch(X_labelled_anomaly, Y_labelled_anomaly, anomaly_batch)
     
     # 真实过滤后的潜在异常是有大部分已知异常、未知异常以及困难正常
     # 若将过滤后的潜在异常全部作为ood，则不合适，所以需要设置权重，对于已知异常权重小，
     ood_data = X_deleted #[346,10]
-    ood_data_y_true = Y_deleted  #[346,]  # 真实标签
+    ood_data_y_true = Y_deleted  #[346,]  # 无标签，设为0
     # 分数越大，越异常越有可能是属于已知异常，权重越小
-    # 权重初始化,使权重在(0,1)之间
+    # 权重初始化,使权重在(0,1)之间，分数越小权重越大
     ood_data_w =  (np.max(score_delete) - score_delete) / (np.max(score_delete) - np.min(score_delete))
 
     # 簇(过滤后的可靠正常)+已知异常的标签
@@ -303,15 +307,13 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
         # # # 每个epoch后再清理
         # gc.collect()
         # torch.cuda.empty_cache()
-        # model.eval()
         
         x_e, y_logit = model(torch.tensor(ood_data).float().to(device))
         con_confidence = torch.max(F.softmax(y_logit, dim = 1), dim=1)[0].cpu().detach().numpy()
-        # con_confidence = torch.max(F.softmax(y_logit, dim = 1)[:,-self.num_anomaly_classes:], dim=1)[0].cpu().detach().numpy()
         ood_data_w =  (np.max(con_confidence) - con_confidence) / (np.max(con_confidence) - np.min(con_confidence))
         gen_ood = getBatchWeigt(ood_data, ood_data_y, ood_data_w, ood_batch)   
 
-    """验证阶段，计算出最佳阈值，实现关注异常/不关注异常部分"""
+    """验证阶段，计算出最佳阈值，实现关注异常/正划分部分"""
     print("model 进入验证阶段, 开始实现Target功能......")
     model.eval()
     _, y_logit = model(torch.tensor(X_val).float().to(device))
@@ -320,9 +322,9 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
     # 未知异常不抛出
     y_val = copy.deepcopy(Y_val)  
     # 将已知异常的标签全部置于1，未知异常和正常置为0， 加载的数据集只有0，1标签
-    # for i in range(num_anomaly_classes):
-    #     y_val[(y_val == num_centroid + i)] = 1
-    # y_val[(y_val == -1) | (y_val == -2)] = 0
+    for i in range(num_anomaly_classes):
+        y_val[(y_val == num_centroid + i)] = 1
+    y_val[(y_val == -1) | (y_val == -2)] = 0
 
     prob = torch.max(F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:], dim=1)[0].cpu().detach().numpy()
         
@@ -350,7 +352,7 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
                 pred_label = -2  # 剩余样本的预测标签
         y_pred.append(pred_label)
     
-    aucroc, aucpr= metric(y_true=y_val, y_score=prob)
+    aucroc, aucpr= metric(y_true=y_val, y_score=y_pred)
     print(f"验证集AUC-ROC: {aucroc:.4f}, AUC-PR: {aucpr:.4f}")
     if verbose:
         print("训练完成！")
@@ -363,7 +365,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
     entropy_all = []
     num_subgroups = num_centroid + num_anomaly_classes
     # 将已知异常的标签赋为1，正常为0，未知异常为-2
-    labels_ = copy.deepcopy(labels)  
+    labels_ = copy.deepcopy(labels)         #加载的数据集只有0，1标签 
     for i in range(num_anomaly_classes):
         labels_[(labels_ == num_centroid + i)] = 1
     labels_[(labels_ == -1)] = 0
@@ -373,13 +375,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
     with torch.no_grad():
 
         _, logits = model(torch.tensor(inputs).float().to(device))
-        # 选出后m维度预测概率的最大值,all
-        # probs = F.softmax(logits, dim = 1)[:,-self.num_anomaly_classes:]
         logits_anomaly = logits[:,-num_anomaly_classes:] #关注异常类别得分
-        
-        # for i, _ in enumerate(probs):
-        #     ent = calculate_entropy(probs[i,:].detach().numpy())
-        #     entropy_all.append(ent)
         
         energy_all = calculate_discrepancy(logits_anomaly[:,:])
         
@@ -388,9 +384,7 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
         for i in range(num_anomaly_classes):
             target_labels[(target_labels == num_centroid + i)] = 1
         target_labels[(target_labels == -1)] = 0
-        target_labels[(target_labels == -2)] = 0
-        
-        # prob_max = torch.max(probs, dim=1)[0]
+        target_labels[(target_labels == -2)] = 0      #这里与使用数据标签对上，变为0，1标签
         
         #前n维正常的和
         probs_normal = F.softmax(logits, dim = 1)[:,:num_centroid]
@@ -403,9 +397,6 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
             if sum_logit <= num_centroid/num_subgroups:
                 new_energy_all.append(energy_all[i])
                 new_target_labels.append(target_labels[i])
-                
-        # eps = 1e-10         
-        # reciprocal_entropy_all = [1/(x+eps) for x in new_entropy_all]
                         
         fpr_1, tpr_1, thresholds_1 = roc_curve(new_target_labels, new_energy_all)
 
@@ -413,11 +404,37 @@ def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,d
         
     return optimal_th_1  
 
-def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,num_anomaly_classes,
-                    stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay,if_split,split_error, verbose=True):
+def fit_TargAD_main(X_train, y_train,mask,model, autoencoder,optimizer,num_centroid,num_anomaly_classes,
+                    stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,input_dim,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay,if_split,split_error, verbose=True):
     """
     整体训练流程函数：包括第一阶段（AE+聚类+筛选）与第二阶段（分类器+软标签训练）
-
+    Args:
+        X_train: 训练集特征
+        y_train: 训练集标签
+        mask: 训练集样本的标签掩码，0表示无标签，1表示已知标签
+        model: 分类器模型
+        autoencoder: 自编码器模型
+        optimizer: 优化器
+        num_centroid: 聚类簇的数量
+        num_anomaly_classes: 异常类别的数量
+        stage_1_epochs: 第一阶段训练轮数
+        stage_2_epochs: 第二阶段训练轮数
+        kmeans_batch: kmeans的batch大小
+        stage_1_batch: 第一阶段batch大小
+        stage_2_batch: 第二阶段batch大小
+        anomaly_batch: 已知异常batch大小
+        ood_batch: 过滤后的潜在异常batch大小
+        device: 设备(cpu/gpu)
+        input_dim: 输入特征维度
+        embedding_dim: 嵌入特征维度
+        loss_oe: ood_loss的权重系数
+        loss_re: 正则化损失的权重系数
+        stage_one_lr: 第一阶段学习率
+        stage_two_lr: 第二阶段学习率
+        weight_decay: 权重衰减系数
+        if_split: 是否划分验证集，True/False
+        split_error: 划分错误时的处理方式，"raise"/"auto"
+        verbose: 是否打印训练信息，True/False
     Returns:
         model: 训练好的分类器模型
         best_threshold: 用于识别已知异常的判决阈值
@@ -425,10 +442,6 @@ def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,n
     model.train()
     autoencoder.train()
     #数据加载及处理
-   
-    #动态确认输入维度
-    input_dim = X_train.shape[1]
-    
     #根据 if_split确定是否将训练数据划分出训练集和验证集，0的话用训练集计算阈值
     if if_split == True and split_error== "raise":
         X_train, X_val, y_train, Y_val = train_test_split(
@@ -447,27 +460,17 @@ def fit_TargAD_main(X_train, y_train,model, autoencoder,optimizer,num_centroid,n
         X_val = X_train
         Y_val = y_train
 
-    # 分离无标签和异常数据
-    unlabelled_mask = y_train == 0
-    anomaly_mask = y_train == 1
-    
-    X_unlabelled = X_train[unlabelled_mask]        # [6999,10] 标签为0的无标签样本
-    X_labelled_anomaly = X_train[anomaly_mask]     # [1,10] 标签为1
+    # # 分离无标签和有标签数据  
+    X_unlabelled = X_train[mask==0]        # [6999,10] 标签为0的无标签样本
+    X_labelled_anomaly = X_train[mask==1]     # [1,10] 标签为1
+    print(f"最终输入的无标签样本数量: {len(X_unlabelled)}, 已知标签样本数量: {len(X_labelled_anomaly)}")
 
-    Y_unlabelled = y_train[unlabelled_mask]         # [6999,] 标签为0的无标签样本
-    Y_labelled_anomaly = y_train[anomaly_mask]
+    Y_unlabelled = y_train[mask==0]         # [6999,] 标签为0的无标签样本
+    Y_labelled_anomaly = y_train[mask==1]
     
-    # X_val.to(device)       
-    # Y_val.to(device)        
     # 填充缺失值NAN的部分
     X_unlabelled = np.where(np.isnan(X_unlabelled), 0, X_unlabelled)
     X_labelled_anomaly = np.where(np.isnan(X_labelled_anomaly), 0, X_labelled_anomaly)
-
-    #数据归一化
-    # scaler = MinMaxScaler()
-    # scaler = scaler.fit(X_unlabelled)
-    # X_unlabelled = scaler.transform(X_unlabelled)
-    # X_labelled_anomaly = scaler.transform(X_labelled_anomaly)
 
     return fit_TargAD(X_labelled_anomaly,Y_labelled_anomaly, X_unlabelled, Y_unlabelled,X_val,Y_val,model,    #添加验证数据
                         optimizer,num_centroid,num_anomaly_classes, stage_1_epochs, stage_2_epochs, kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,
@@ -493,7 +496,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
         AE_models: 训练好的自编码器模型列表
     """
     # clustering
-    kmean = MiniBatchKMeans(num_centroid, n_init = 42, batch_size = kmeans_batch)    #这个参数不好传的话到时用ags
+    kmean = MiniBatchKMeans(num_centroid, n_init = 42, batch_size = kmeans_batch)  
     kmean.fit(X_unlabelled)
     #为无标签样本生成聚类标签
     Y_unlabelled_category = kmean.predict(X_unlabelled)
@@ -605,7 +608,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
         for i in range(x_unlabelled_e.shape[0]):
             # 计算样本间的欧式距离
             # x_unlabelled_e[i]表示unlabeled data的表征, 每个有64维
-            # x_labelled_eb表示labeled anomaly的表征大小为(batch_size,64)
+            # x_labelled_e表示labeled anomaly的表征大小为(batch_size,64)
             # 这里计算的是unlabeled_e与每一个labelled_e之间的欧式距离            # 对于每一个unlabeled_e都有batch_size个距离
             distance = nn.functional.pairwise_distance(x_unlabelled_e[i], x_labelled_e, p=2)
             # 取出batch_size个距离中最小的距离
@@ -624,7 +627,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
     # topk返回的是排名前k的值与对应的下标
     # 这里选取异常分数前5%的作为潜在异常
     scores, indexs = unlabelled_scores.topk(int(unlabelled_scores.shape[0] * filter), largest=True)
-    score_delete = unlabelled_scores[indexs.detach().numpy()].detach().numpy()
+    score_delete = unlabelled_scores[indexs.detach().numpy()].detach().numpy()   #异常分数
     
     # 潜在的异常
     X_deleted = X_unlabelled[indexs.detach().numpy()]
@@ -658,30 +661,15 @@ def predict_TargAD(model,best_threshold,x_test,num_centroid,num_anomaly_classes,
         x_test = torch.tensor(x_test).float().to(device)
         # 获取分类器的预测结果
         _, y_logit = model(x_test)  #y_pred的shape为[3000,8]
-        # 未知异常不抛出
-        # y_test = copy.deepcopy(self.Y_test[:,0])  
-        # # 将已知异常的标签全部置于1，未知异常和正常置为0
-        # for i in range(self.num_anomaly_classes):
-        #     y_test[(y_test == self.num_centroid + i)] = 1
-        # y_test[(y_test == -1) | (y_test == -2)] = 0
-               
-        # y_test_new = copy.deepcopy(self.Y_test[:,0])  
-        # # 将已知异常的标签全部置于1，未知异常-2,正常0
-        # for i in range(self.num_anomaly_classes):
-        #     y_test_new[(y_test_new == self.num_centroid + i)] = 1
-        # y_test_new[(y_test_new == -1)] = 0
-        # y_test_new[(y_test_new == -2)] = -2
            
         # 得到测试集的概率
-         
         prob = torch.max(F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:], dim=1)[0].cpu().detach().numpy()
 
         # # 用阈值给测试集的预测结果重新赋值
         # y_pred = []
-        # #异常类型分数
         # probs = F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:]
         # logits_anomaly = y_logit[:,-num_anomaly_classes:]
-        # #正常分数
+        
         # probs_normal = F.softmax(y_logit, dim = 1)[:,:num_centroid]
         # sum_normal_logits = torch.sum(probs_normal, dim=1).cpu().detach().numpy()
         
@@ -700,5 +688,52 @@ def predict_TargAD(model,best_threshold,x_test,num_centroid,num_anomaly_classes,
         #         else:
         #             pred_label = -2  # 剩余样本的预测标签
         #     y_pred.append(pred_label)
-        # y_pred = torch.tensor(y_pred).float().cpu().numpy()      !!!注释掉的是源码用来计算混淆矩阵的，实际源码并未对这块结果有返回
+        
+        # cm_test = confusion_matrix(y_test_new, y_pred, labels = [0,1,-2])    
+     
+        # TP_normal = cm_test[0][0]
+        # FP_normal = cm_test[1][0] + cm_test[2][0]
+        # FN_normal = cm_test[0][1] + cm_test[0][2]
+        
+        # precision_normal = TP_normal / (TP_normal + FP_normal)
+        # recall_normal = TP_normal / (TP_normal + FN_normal)
+        # f1_normal = 2*(precision_normal*recall_normal)/(precision_normal+recall_normal)
+        
+        # TP_anomaly = cm_test[1][1]
+        # FP_anomaly = cm_test[0][1] + cm_test[2][1]
+        # FN_anomaly = cm_test[1][0] + cm_test[1][2]
+        
+        # precision_anomaly = TP_anomaly / (TP_anomaly + FP_anomaly)
+        # recall_anomaly = TP_anomaly / (TP_anomaly + FN_anomaly)
+        # f1_anomaly = 2*(precision_anomaly*recall_anomaly)/(precision_anomaly+recall_anomaly)
+        
+        # TP_unknown = cm_test[2][2]
+        # FP_unknown = cm_test[0][2] + cm_test[1][2]
+        # FN_unknown = cm_test[2][0] + cm_test[2][1]
+        
+        # precision_unknown = TP_unknown / (TP_unknown + FP_unknown)
+        # recall_unknown = TP_unknown / (TP_unknown + FN_unknown)
+        # f1_unknown = 2*(precision_unknown*recall_unknown)/(precision_unknown+recall_unknown)
+        
+        # # 宏平均是直接计算各个类别的平均值，不考虑类别的样本数量。
+        # macro_avg_precision = (precision_normal + precision_anomaly + precision_unknown) / 3
+        # macro_avg_recall = (recall_normal + recall_anomaly + recall_unknown) / 3
+        # macro_avg_f1_score = (f1_normal + f1_anomaly + f1_unknown) / 3
+        
+        
+        # # 加权平均是根据每个类别的样本数量进行加权的平均值。
+        # normal_all = cm_test[0][0] + cm_test[0][1] + cm_test[0][2]
+        # anomaly_all = cm_test[1][0] + cm_test[1][1] + cm_test[1][2]
+        # unknown_all = cm_test[2][0] + cm_test[2][1] + cm_test[2][2]
+        # sample_all = normal_all + anomaly_all + unknown_all
+        
+        # weighted_avg_precision = (precision_normal * normal_all + precision_anomaly * anomaly_all
+        #                          + precision_unknown * unknown_all)/sample_all
+        
+        # weighted_avg_recall = (recall_normal * normal_all + recall_anomaly * anomaly_all
+        #                          + recall_unknown * unknown_all)/sample_all
+        
+        # weighted_avg_f1_score = (f1_normal * normal_all + f1_anomaly * anomaly_all
+        #                          + f1_unknown * unknown_all)/sample_all
+
     return prob
