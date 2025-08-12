@@ -58,6 +58,7 @@ class ModelRegistry:
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
+            "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
         }
         return default_model_map.get(model_name, None)
 
@@ -74,6 +75,8 @@ class ExperimentRunner:
         parameter_config_path=None,
         datasets=None,
         rla_list=None,
+        eln_list=None,
+        target_for_unlabeled=None,
         seed_list=None,
         gpu_list=None,
         DEBUG=False,
@@ -90,13 +93,14 @@ class ExperimentRunner:
             parameter_config_path: 参数配置文件路径
             datasets: 数据集列表
             rla_list: 标注异常比例列表
+            eln_list: 标注正常相对la比例列表
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
         self.NO_RESUME = NO_RESUME
-        if data_type not in ["video", "tabular"]:
-            raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
+        if data_type not in ["video", "tabular_classical", "tabular_CV_by_ResNet18", "tabular_CV_by_ViT","tabular_NLP_by_BERT", "tabular_NLP_by_RoBERTa"]:
+            raise ValueError(f"data_type must have 'video' or 'tabular' in it, got '{data_type}'")
 
         self.models = models
         self.data_type = data_type
@@ -107,7 +111,10 @@ class ExperimentRunner:
 
         # 设置默认输出目录和配置路径
         default_output_dir = f"results/{data_type}"
-        default_config_path = f"WSADBench/model_configs/{data_type}"
+        if "tabular" in data_type:
+            default_config_path = f"WSADBench/model_configs/tabular"
+        else:
+            default_config_path = f"WSADBench/model_configs/{data_type}"
 
         self.output_dir = Path(output_dir) if output_dir else Path(default_output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
@@ -137,6 +144,8 @@ class ExperimentRunner:
         # 实验参数
         self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
+        self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
+        self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "use_0"
 
         # 获取数据集列表
         if datasets is None:
@@ -158,6 +167,8 @@ class ExperimentRunner:
         logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
         logger.info(f"数据集数量: {len(self.datasets)}")
         logger.info(f"RLA设置: {self.rla_list}")
+        logger.info(f"ELN设置: {self.eln_list}")
+        logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -269,9 +280,21 @@ class ExperimentRunner:
         if self.data_type == "video":
             datasets = self.data_generator.generate_dataset_list()["video"]
             logger.info(f"找到 {len(datasets)} 个Video数据集")
-        else:  # tabular
+        elif self.data_type == "tabular_classical":  # tabular
             datasets = self.data_generator.generate_dataset_list()["classical"]
             logger.info(f"找到 {len(datasets)} 个Classical数据集")
+        elif self.data_type == "tabular_CV_by_ResNet18":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18数据集")
+        elif self.data_type == "tabular_CV_by_ViT":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ViT"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ViT数据集")
+        elif self.data_type == "tabular_NLP_by_BERT":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["NLP_by_BERT"]
+            logger.info(f"找到 {len(datasets)} 个NLP_by_BERT数据集")
+        elif self.data_type == "tabular_NLP_by_RoBERTa":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
+            logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
         return datasets
 
     @staticmethod
@@ -371,7 +394,7 @@ class ExperimentRunner:
         else:
             df.to_csv(result_file, index=False)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']}")
+        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},target_for_unlabeled={result['target_for_unlabeled']}")
 
     def _load_finish_exp(self):
         finished_experiments = set()
@@ -380,8 +403,8 @@ class ExperimentRunner:
 
             if detail_file.exists():
                 try:
-                    df = pd.read_csv(detail_file,dtype={'rla':'object'})
-                    main_setting = df[["model", "dataset", "rla", "seed"]].drop_duplicates().to_numpy().tolist()
+                    df = pd.read_csv(detail_file)
+                    main_setting = df[["model", "dataset", "rla","eln","target_for_unlabeled", "seed"]].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
                     pass
@@ -390,7 +413,7 @@ class ExperimentRunner:
     def run_experiments(self):
         """运行所有实验"""
         # 生成实验参数组合
-        experiment_params = list(product(self.models, self.datasets, self.rla_list, self.seed_list))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.target_for_unlabeled, self.seed_list))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -406,6 +429,8 @@ class ExperimentRunner:
         logger.info(f"模型: {self.models}")
         logger.info(f"数据集数量: {len(self.datasets)}")
         logger.info(f"RLA设置: {self.rla_list}")
+        logger.info(f"ELN设置: {self.eln_list}")
+        logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -466,8 +491,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -478,8 +503,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的时间
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
-        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
-        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
+        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].mean()
+        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -567,7 +592,7 @@ def generate_summary_only(output_dir):
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file,dtype={'rla':'object'})
+                    df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
@@ -654,7 +679,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla, seed = params
+    model_name, dataset_name, rla,eln,target_for_unlabeled, seed = params
 
     # 设置GPU环境
     if gpu_id is not None:
@@ -679,13 +704,15 @@ def run_single_experiment_with_gpu(params_with_config):
         # 生成数据
         data = data_generator.generator(
             la=rla,
+            eln=eln,
+            target_for_unlabeled=target_for_unlabeled,
             at_least_one_labeled=True,
-            la_shortage_mode="ignore",
+            shortage_mode="ignore",
         )
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla}) 没有标注异常，跳过")
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},target_for_unlab beled={target_for_unlabeled}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -713,6 +740,8 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["X_train"] = data["X_train"]
         if has_param(model.fit, "y_train"):
             train_input["y_train"] = data["y_train"]
+        if has_param(model.fit, "mask"):
+            train_input["mask"] = data["mask"]
         if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
@@ -771,6 +800,8 @@ def run_single_experiment_with_gpu(params_with_config):
             "model": model_name,
             "dataset": dataset_name,
             "rla": rla,
+            "eln": eln,
+            "target_for_unlabeled": target_for_unlabeled,
             "seed": seed,
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
@@ -785,7 +816,7 @@ def run_single_experiment_with_gpu(params_with_config):
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla}): "
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},target_for_unlabeled={target_for_unlabeled}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
@@ -798,11 +829,13 @@ def run_single_experiment_with_gpu(params_with_config):
     except Exception as e:
         if DEBUG:
             raise e
-        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla}): {str(e)}")
+        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},target_for_unlabeled={target_for_unlabeled}): {str(e)}")
         return {
             "model": model_name,
             "dataset": dataset_name,
             "rla": rla,
+            "eln": eln,
+            "target_for_unlabeled": target_for_unlabeled,
             "seed": seed,
             "aucroc": np.nan,
             "aucpr": np.nan,
@@ -832,7 +865,7 @@ def main():
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
     # 必需参数
-    parser.add_argument("--data_type", choices=["video", "tabular"], required=True, help="数据类型：video 或 tabular")
+    parser.add_argument("--data_type", choices=["video", "tabular_classical","tabular_CV_by_ResNet18","tabular_CV_by_ViT","tabular_NLP_by_BERT","tabular_NLP_by_RoBERTa"], required=True, help="数据类型：video 或 tabular")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
@@ -844,7 +877,7 @@ def main():
     parser.add_argument(
         "--parameter_config_path",
         type=str,
-        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})",
+        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})", #video / tabular
     )
 
     parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有数据集")
@@ -855,6 +888,23 @@ def main():
         type=int_or_float,
         default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
         help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+    )
+
+    parser.add_argument(
+        "--eln_list",
+        nargs="+",
+        type=int_or_float,
+        default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  #0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
+        help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+    )
+
+    parser.add_argument(
+        "--target_for_unlabeled",
+        nargs="+",
+        type=str,
+        choices=["fill_unlabel_0","keep_label", "delete_sample"],
+        default="fill_unlabel_0",
+        help="未标注数据的目标处理方式 (默认: fill_unlabel_0, 可选: fill_unlabel_0, keep_label,delete_sample...待补充)",
     )
 
     parser.add_argument(
@@ -903,6 +953,24 @@ def main():
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
+    # # 预处理RLA列表
+    # _rla_list = []
+    # for rla in args.rla_list:
+    #     if rla > 1:
+    #         _rla_list.append(int(rla))
+    #     else:
+    #         _rla_list.append(rla)
+    # args.rla_list = _rla_list
+
+    # #预处理ELN列表
+    # _eln_list = []
+    # for eln in args.eln_list:
+    #     if eln > 1:
+    #         _eln_list.append(int(eln))
+    #     else:
+    #         _eln_list.append(eln)
+    # args.eln_list = _eln_list
+
     # 处理GPU参数
     gpu_list = None
     if args.gpus is not None:
@@ -920,6 +988,8 @@ def main():
         parameter_config_path=args.parameter_config_path,
         datasets=args.datasets,
         rla_list=args.rla_list,
+        eln_list=args.eln_list,
+        target_for_unlabeled=args.target_for_unlabeled,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,

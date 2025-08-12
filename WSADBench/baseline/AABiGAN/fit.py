@@ -9,6 +9,7 @@ from itertools import cycle
 def fit_aabigan(
     X_train,
     y_train,
+    mask,
     X_aux,
     generator,
     encoder,
@@ -33,6 +34,7 @@ def fit_aabigan(
         X_train: 主要训练数据 (正常+少量异常)
         y_train: 训练标签 (0: unlabeled/normal, 1: labeled anomaly)
         X_aux: 辅助异常数据
+        mask: 区分有无标签样本的掩码
         generator: 生成器模型
         encoder: 编码器模型
         discriminator: 判别器模型
@@ -52,12 +54,12 @@ def fit_aabigan(
     encoder.train()
     discriminator.train()
 
-    # 分离标记的异常样本和未标记样本
-    labeled_anomaly_mask = y_train == 1
-    unlabeled_mask = y_train == 0
+    # # 分离标记的异常样本和未标记样本
+    # labeled_anomaly_mask = y_train == 1
+    # unlabeled_mask = y_train == 0
 
-    X_labeled_anomaly = X_train[labeled_anomaly_mask]
-    X_unlabeled = X_train[unlabeled_mask]
+    X_labeled_anomaly = X_train[mask==1]   #有标签的样本，根据设定可含有正常样本
+    X_unlabeled = X_train[mask==0]
 
     # 创建数据加载器
     if len(X_labeled_anomaly) > 0:

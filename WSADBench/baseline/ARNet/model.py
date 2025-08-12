@@ -126,21 +126,6 @@ class BaS_Net(nn.Module):        #这个模型输出有点特别，运行时需�
         return score_base, cas_base, score_supp, cas_supp, fore_weights
 
 
-#
-# class Model_single(torch.nn.Module):
-#     def __init__(self, n_feature):
-#         super(Model_single, self).__init__()
-#         self.fc = nn.Linear(n_feature, n_feature)
-#         self.classifier = nn.Linear(n_feature, 1)
-#         self.sigmoid = nn.Sigmoid()
-#         self.dropout = nn.Dropout(0.7)
-#         self.apply(weights_init)
-#
-#     def forward(self, inputs, is_training=True):
-#         x = F.relu(self.fc(inputs))
-#         if is_training:
-#             x = self.dropout(x)
-#         return x, self.classifier(x), self.sigmoid(self.classifier(x))
 
 
 class Model_mean(torch.nn.Module):
@@ -286,31 +271,6 @@ class Model_concatcate(torch.nn.Module):
             x = self.dropout(x)
 
         return x, self.sigmoid(self.classifier(x))
-
-# class Model_attention(nn.Module):
-#     def __init__(self, args):
-#         super(Model_attention, self).__init__()
-#         self.sigmoid = nn.Sigmoid()
-#         self.fill_context_mask = fill_context_mask
-#         self.args = args
-#
-#     def forward(self, final_features, element_logits, seq_len, labels):
-#         seq_len_list = seq_len.tolist()
-#         for i in range(len(element_logits)):
-#             if labels[i] == 0:
-#                 element_logits[i] = 1 - element_logits[i]
-#         element_logits = torch.transpose(element_logits, 2, 1)
-#         mask = self.fill_context_mask(mask=element_logits.clone(), sizes=seq_len_list, v_mask=float('-inf'), v_unmask=0)
-#         attention_logits = element_logits + mask
-#         if self.args.attention_type == 'softmax':
-#             attention_logits = F.softmax(attention_logits, dim=2)
-#         elif self.args.attention_type == 'sigmoid':
-#             attention_logits = self.sigmoid(attention_logits)
-#         else:
-#             raise ('attention_type is out of option')
-#         M = torch.bmm(attention_logits, final_features).squeeze(1)
-#
-#         return M
 
 class model_lstm(torch.nn.Module):
     def __init__(self, n_feature,seq_len):
