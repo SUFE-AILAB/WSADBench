@@ -902,9 +902,9 @@ def main():
         "--target_for_unlabeled",
         nargs="+",
         type=str,
-        choices=["use_0","ignore"],
-        default="use_0",
-        help="未标注数据的目标处理方式 (默认: use_0, 可选: use_0, ignore...待补充)",
+        choices=["fill_unlabel_0","keep_label", "delete_sample"],
+        default="fill_unlabel_0",
+        help="未标注数据的目标处理方式 (默认: fill_unlabel_0, 可选: fill_unlabel_0, keep_label,delete_sample...待补充)",
     )
 
     parser.add_argument(

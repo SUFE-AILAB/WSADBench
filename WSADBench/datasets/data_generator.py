@@ -453,11 +453,9 @@ class DataGenerator:
         mask = np.ones_like(y_train, dtype=int)
         mask[idx_unlabeled] = 0     #无标签索引处赋值为0
 
-        if target_for_unlabeled == "use_0":
+        if target_for_unlabeled == "fill_unlabel_0":
             y_train[mask == 0] = 0  # 无标签样本的标签为0
-        elif target_for_unlabeled == "use_-1":
-            y_train[mask == 0] = -1  # 无标签样本的标签为-1
-        elif target_for_unlabeled == "ignore":  #只使用有标签样本
+        elif target_for_unlabeled == "delete_sample":  #只使用有标签样本
             X_train = X_train[mask == 1]
             y_train = y_train[mask == 1]
 
