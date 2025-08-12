@@ -234,7 +234,7 @@ class DataGenerator:
         y=None,
         minmax=True,
         la=None,
-        ln=None,
+        eln=None,
         target_for_unlabeled=None,
         at_least_one_labeled=False,
         realistic_synthetic_mode=None,
@@ -248,7 +248,7 @@ class DataGenerator:
     ):
         """
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
-        ln: labeled normal samples, can be either the ratio of labeled normal samples or the number of labeled normal samples
+        eln: relative labeled normal samples, can be either the ratio of labeled normal samples or the number of labeled normal samples
         target_for_unlabeled: how to handle the unlabeled data, can be:"use_0", "use_-1", "use_1", "ignore"
         at_least_one_labeled: whether to guarantee at least one labeled anomalies in the training set
         shortage_mode: behavior when anomaly count < required la
@@ -415,13 +415,13 @@ class DataGenerator:
         else:
             raise NotImplementedError
         
-        if type(ln) == float:
+        if type(eln) == float:
             if at_least_one_labeled:
-                idx_labeled_normal= np.random.choice(idx_normal, ceil(ln * len(idx_labeled_anomaly)), replace=False)
+                idx_labeled_normal= np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
             else:
-                idx_labeled_normal = np.random.choice(idx_normal, int(ln * len(idx_labeled_anomaly)), replace=False)
-        elif type(ln) == int:
-            if ln > len(idx_normal):
+                idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+        elif type(eln) == int:
+            if eln > len(idx_normal):
                 if shortage_mode == "raise":
                     raise AssertionError(
                         f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
@@ -432,7 +432,7 @@ class DataGenerator:
                 else:
                     raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
             else:
-                idx_labeled_normal = np.random.choice(idx_normal, ln, replace=False)
+                idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
         else:
             raise NotImplementedError
 

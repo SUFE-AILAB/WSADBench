@@ -592,7 +592,7 @@ def generate_summary_only(output_dir):
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file,dtype={'rla':'object'})
+                    df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
@@ -704,7 +704,7 @@ def run_single_experiment_with_gpu(params_with_config):
         # 生成数据
         data = data_generator.generator(
             la=rla,
-            ln=eln,
+            eln=eln,
             target_for_unlabeled=target_for_unlabeled,
             at_least_one_labeled=True,
             shortage_mode="ignore",
@@ -893,7 +893,7 @@ def main():
     parser.add_argument(
         "--eln_list",
         nargs="+",
-        type=float,
+        type=int_or_float,
         default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  #0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
         help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
@@ -953,23 +953,23 @@ def main():
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
-    # 预处理RLA列表
-    _rla_list = []
-    for rla in args.rla_list:
-        if rla > 1:
-            _rla_list.append(int(rla))
-        else:
-            _rla_list.append(rla)
-    args.rla_list = _rla_list
+    # # 预处理RLA列表
+    # _rla_list = []
+    # for rla in args.rla_list:
+    #     if rla > 1:
+    #         _rla_list.append(int(rla))
+    #     else:
+    #         _rla_list.append(rla)
+    # args.rla_list = _rla_list
 
-    #预处理ELN列表
-    _eln_list = []
-    for eln in args.eln_list:
-        if eln > 1:
-            _eln_list.append(int(eln))
-        else:
-            _eln_list.append(eln)
-    args.eln_list = _eln_list
+    # #预处理ELN列表
+    # _eln_list = []
+    # for eln in args.eln_list:
+    #     if eln > 1:
+    #         _eln_list.append(int(eln))
+    #     else:
+    #         _eln_list.append(eln)
+    # args.eln_list = _eln_list
 
     # 处理GPU参数
     gpu_list = None
