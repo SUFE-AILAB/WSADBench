@@ -57,6 +57,7 @@ class ModelRegistry:
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
+            "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
         }
         return default_model_map.get(model_name, None)
 
@@ -91,14 +92,14 @@ class ExperimentRunner:
             parameter_config_path: 参数配置文件路径
             datasets: 数据集列表
             rla_list: 标注异常比例列表
-            eln_list: 标注正常比例列表
+            eln_list: 标注正常相对la比例列表
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
         self.NO_RESUME = NO_RESUME
-        if data_type not in ["video", "tabular"]:
-            raise ValueError(f"data_type must be 'video' or 'tabular', got '{data_type}'")
+        if data_type not in ["video", "tabular_classical", "tabular_CV_by_ResNet18", "tabular_CV_by_ViT","tabular_NLP_by_BERT", "tabular_NLP_by_RoBERTa"]:
+            raise ValueError(f"data_type must have 'video' or 'tabular' in it, got '{data_type}'")
 
         self.models = models
         self.data_type = data_type
@@ -109,7 +110,10 @@ class ExperimentRunner:
 
         # 设置默认输出目录和配置路径
         default_output_dir = f"results/{data_type}"
-        default_config_path = f"WSADBench/model_configs/{data_type}"
+        if "tabular" in data_type:
+            default_config_path = f"WSADBench/model_configs/tabular"
+        else:
+            default_config_path = f"WSADBench/model_configs/{data_type}"
 
         self.output_dir = Path(output_dir) if output_dir else Path(default_output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
@@ -275,9 +279,21 @@ class ExperimentRunner:
         if self.data_type == "video":
             datasets = self.data_generator.generate_dataset_list()["video"]
             logger.info(f"找到 {len(datasets)} 个Video数据集")
-        else:  # tabular
+        elif self.data_type == "tabular_classical":  # tabular
             datasets = self.data_generator.generate_dataset_list()["classical"]
             logger.info(f"找到 {len(datasets)} 个Classical数据集")
+        elif self.data_type == "tabular_CV_by_ResNet18":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18数据集")
+        elif self.data_type == "tabular_CV_by_ViT":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ViT"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ViT数据集")
+        elif self.data_type == "tabular_NLP_by_BERT":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["NLP_by_BERT"]
+            logger.info(f"找到 {len(datasets)} 个NLP_by_BERT数据集")
+        elif self.data_type == "tabular_NLP_by_RoBERTa":  # tabular
+            datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
+            logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
         return datasets
 
     @staticmethod
@@ -474,7 +490,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
         dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -857,7 +873,7 @@ def main():
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
     # 必需参数
-    parser.add_argument("--data_type", choices=["video", "tabular"], required=True, help="数据类型：video 或 tabular")
+    parser.add_argument("--data_type", choices=["video", "tabular_classical","tabular_CV_by_ResNet18","tabular_CV_by_ViT","tabular_NLP_by_BERT","tabular_NLP_by_RoBERTa"], required=True, help="数据类型：video 或 tabular")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
@@ -869,7 +885,7 @@ def main():
     parser.add_argument(
         "--parameter_config_path",
         type=str,
-        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})",
+        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})", #video / tabular
     )
 
     parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有数据集")
@@ -886,15 +902,17 @@ def main():
         "--eln_list",
         nargs="+",
         type=float,
-        default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
-        help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+        default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  #0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
+        help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
     parser.add_argument(
         "--target_for_unlabeled",
+        nargs="+",
         type=str,
+        choices=["use_0","ignore"],
         default="use_0",
-        help="未标注数据的目标处理方式 (默认: use_0, 可选: use_-1, use_0,use_1, ignore...待补充)",
+        help="未标注数据的目标处理方式 (默认: use_0, 可选: use_0, ignore...待补充)",
     )
 
     parser.add_argument(

@@ -417,9 +417,9 @@ class DataGenerator:
         
         if type(ln) == float:
             if at_least_one_labeled:
-                idx_labeled_normal= np.random.choice(idx_normal, ceil(ln * len(idx_normal)), replace=False)
+                idx_labeled_normal= np.random.choice(idx_normal, ceil(ln * len(idx_labeled_anomaly)), replace=False)
             else:
-                idx_labeled_normal = np.random.choice(idx_normal, int(ln * len(idx_normal)), replace=False)
+                idx_labeled_normal = np.random.choice(idx_normal, int(ln * len(idx_labeled_anomaly)), replace=False)
         elif type(ln) == int:
             if ln > len(idx_normal):
                 if shortage_mode == "raise":

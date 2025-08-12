@@ -181,9 +181,9 @@ class AABiGAN:
         self._initialize_models(input_dim if self.modal == "tabular" else None)
 
         # 分离数据
-        labeled_anomaly_mask = y_train == 1
-        X_labeled_anomaly = X_train_tensor[labeled_anomaly_mask]
-        X_unlabeled = X_train_tensor[y_train == 0]
+        # labeled_anomaly_mask = y_train == 1
+        X_labeled_anomaly = X_train_tensor[mask==1]
+        X_unlabeled = X_train_tensor[mask==0]
 
         if self.verbose:
             print(f"Training data: {len(X_train_tensor)} samples")

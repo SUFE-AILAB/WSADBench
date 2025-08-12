@@ -1,3 +1,4 @@
+from pyexpat import model
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,21 +24,21 @@ class ARNet:
             seed:int=42,
             #模型参数
             input_dim:int=2048,
-            # dropout: float = 0.7,
+            dropout: float = 0.7,
             model_name: str =None,
             n_feature: int=2048,
             feature_size:int=2048,
             # 训练参数
             epochs: int = 30,
             batch_size: int = 30,
-            lr: float = 0.0001,                   #学习率
+            lr: float = 0.0001,                 
             weight_decay: float = 0.0005,
             #损失参数
             DMIL_weight: float = 1.000,
             Center_weight: float = 20.000,
             #其他参数
-            # segments_per_video: int = 300,
-            # k: int = 4,  # k值
+            segments_per_video: int = 32,
+            k: int = 4,  # k值
             # max_seqlen: int = 300,  # 最大序列长度
             # seq_len:List[int] = None,  # 如果是LSTM模型，需要传入序列长度
             verbose: bool = True, 
@@ -64,7 +65,7 @@ class ARNet:
         """
         self.seed = seed
         self.input_dim = input_dim
-        # self.dropout = dropout
+        self.dropout = dropout
         self.model_name = model_name
         self.n_feature = n_feature
         self.feature_size = feature_size
@@ -74,8 +75,8 @@ class ARNet:
         self.weight_decay = weight_decay
         self.DMIL_weight = DMIL_weight
         self.Center_weight = Center_weight
-        # self.segments_per_video = segments_per_video
-        # self.k = k
+        self.segments_per_video = segments_per_video
+        self.k = k
         # self.max_seqlen = max_seqlen  # 最大序列长度
         # self.seq_len = seq_len  # 如果是LSTM模型，需要传入序列长度
         self.verbose = verbose
@@ -97,17 +98,10 @@ class ARNet:
 
     def _init_model(self):
         """初始化模型"""
-        # if self.seq_len is None:
-        #     self.seq_len = torch.full((self.batch_size*2,), 32, dtype=torch.int32)
+
         if self.model is None:
             # 创建模型
             
-
-            # if self.model_name == 'model_lstm':    #这个模型比较特殊
-            #     # 创建序列长度张量（假设每个视频都是完整的32个片段）
-            #     seq_len = torch.full((2,), 32, dtype=torch.int32).to(self.device)
-            #     self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=seq_len).to(self.device)
-            # else:
             if self.model_name == "model_lstm":
                 self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=self.seq_len).to(self.device)  
             else:
@@ -117,10 +111,6 @@ class ARNet:
             self.optimizer = optim.Adam(
                 self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
             )
-
-            # # 创建学习率调度器
-            # if self.use_scheduler:
-            #     self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
 
             if self.verbose:
                 print(f"ARNet模型初始化完成")
@@ -159,11 +149,14 @@ class ARNet:
             X_train=X,
             y_train=y,
             model=self.model,
+            model_name=self.model_name,
             # seq_len=self.seq_len,  # 如果是LSTM模型，需要传入序列长度
+            segments_per_video=self.segments_per_video,
             optimizer=self.optimizer,
             epochs=self.epochs,
             batch_size=self.batch_size,
             device=self.device,
+            k=self.k,  # k值
             DMIL_weight=self.DMIL_weight,
             Center_weight=self.Center_weight,
             verbose=self.verbose,
@@ -203,19 +196,14 @@ class ARNet:
 
         X = self._preprocess_data(X)
         X_tensor = torch.FloatTensor(X)   #[696270,2048]
-        # X_tensor = X_tensor.reshape(X.shape[0], 1, X.shape[1])
-        # print(f"X_tensor_shape:{X_tensor.shape}")
-        batch_size = 2000 #写死
         all_scores = []
         with torch.no_grad():
-            for start in tqdm(range(0, len(X), batch_size)):
-                end = min(start + batch_size, len(X))
-                # print(f'start:{start}, end:{end}')
+            for start in tqdm(range(0, len(X), self.batch_size)):
+                end = min(start + self.batch_size, len(X))
                 X_tensor_batch = X_tensor[start:end].to(self.device)  # [B, 2048]
                 _, y_pred = self.model(X_tensor_batch)   #[200,10,1] ,最后一个不是 ;seq_len 为lstm添加
                 y_score = y_pred.reshape(y_pred.shape[0]*y_pred.shape[1], -1)  # [2000, 1]  #展平
                 score = y_score.squeeze().cpu().numpy()
-            # scores = y_pred.squeeze()
                 all_scores.append(score)  #合并
         # 合并所有 batch 结果
         scores = np.concatenate(all_scores, axis=0)

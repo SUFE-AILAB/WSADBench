@@ -18,7 +18,7 @@ parameters:
   stage_two_lr: 0.00001
   # weight_decay: 1e-6
   num_centroid: 5
-  num_anomaly_classes: 2  # 可选值为1,2,3,4,5,6,7
+  num_anomaly_classes: 3  # 可选值为1,2,3,4,5,6,7
 
   # 模型架构参数
   embedding_dim: 64

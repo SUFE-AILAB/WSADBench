@@ -1,11 +1,17 @@
 classical:
   DATA_DIR: 'WSADBench/datasets/Classical/'
   END_WITH: ".npz"
-cv:
+CV_by_ResNet18:
   DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18/'
   END_WITH: ".npz"
-nlp:
+CV_by_ViT:
+  DATA_DIR: 'WSADBench/datasets/CV_by_ViT/'
+  END_WITH: ".npz"
+NLP_by_BERT:
   DATA_DIR: 'WSADBench/datasets/NLP_by_BERT/'
+  END_WITH: ".npz"
+NLP_by_RoBERTa:
+  DATA_DIR: 'WSADBench/datasets/NLP_by_RoBERTa/'
   END_WITH: ".npz"
 video:
   UCF_Crime:
