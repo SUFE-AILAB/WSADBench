@@ -47,6 +47,7 @@ import gc
 from sklearn.model_selection import train_test_split
 
 
+
 def shuffle(X, Y, S):
     random_index = np.random.permutation(X.shape[0])
     return X[random_index], Y[random_index], S[random_index]
@@ -59,14 +60,25 @@ def shuffle_u(X, Y):
 def getBatch(X, Y, BATCH_SIZE):
     while True:
         X, Y = shuffle_u(X, Y)
-        for i in range(int(len(X)/BATCH_SIZE)):
-            yield X[i*BATCH_SIZE:(i+1)*BATCH_SIZE], Y[i*BATCH_SIZE:(i+1)*BATCH_SIZE]
+        if len(X)<BATCH_SIZE:     #避免因为X数量太少而这块陷入无限循环
+            iter = 1        
+            for i in range(int(iter)):
+                yield X[i*BATCH_SIZE:min(len(X),(i+1)*BATCH_SIZE)], Y[i*BATCH_SIZE:min(len(Y),(i+1)*BATCH_SIZE)]
+        else:
+            for i in range(int(len(X)/BATCH_SIZE)):
+                yield X[i*BATCH_SIZE:(i+1)*BATCH_SIZE], Y[i*BATCH_SIZE:(i+1)*BATCH_SIZE]
     
 def getBatchWeigt(X, Y, W, BATCH_SIZE):
     while True:
         X, Y, W = shuffle(X, Y, W)
-        for i in range(int(len(X)/BATCH_SIZE)):
-            yield X[i*BATCH_SIZE:(i+1)*BATCH_SIZE], Y[i*BATCH_SIZE:(i+1)*BATCH_SIZE], W[i*BATCH_SIZE:(i+1)*BATCH_SIZE] 
+        if len(X)<BATCH_SIZE:     #避免因为X数量小于BATCH_SIZE而这块陷入无限循环
+            iter = 1        
+            for i in range(int(iter)):
+                yield X[i*BATCH_SIZE:min(len(X),(i+1)*BATCH_SIZE)], Y[i*BATCH_SIZE:min(len(Y),(i+1)*BATCH_SIZE)],W[i*BATCH_SIZE:min(len(W),(i+1)*BATCH_SIZE)]
+        else:
+            for i in range(int(len(X)/BATCH_SIZE)):
+                yield X[i*BATCH_SIZE:(i+1)*BATCH_SIZE], Y[i*BATCH_SIZE:(i+1)*BATCH_SIZE], W[i*BATCH_SIZE:min(len(W),(i+1)*BATCH_SIZE)] 
+
 
 def calculate_entropy(probs):
     ent = -np.sum(probs * np.log(probs + 1e-8))
@@ -95,7 +107,7 @@ def Find_Optimal_Cutoff(TPR, FPR, threshold):
     point = [FPR[Youden_index], TPR[Youden_index]]
     return optimal_threshold, point
 
-from sklearn.metrics import roc_auc_score, precision_recall_curve,auc
+
 def metric(y_true, y_score, pos_label=1):
     aucroc = roc_auc_score(y_true, y_score)
     precision, recall, threshold = precision_recall_curve(y_true, y_score)
@@ -308,101 +320,9 @@ def fit_TargAD(X_labelled_anomaly, Y_labelled_anomaly,X_unlabelled, Y_unlabelled
         # gc.collect()
         # torch.cuda.empty_cache()
         
-        x_e, y_logit = model(torch.tensor(ood_data).float().to(device))
-        con_confidence = torch.max(F.softmax(y_logit, dim = 1), dim=1)[0].cpu().detach().numpy()
-        ood_data_w =  (np.max(con_confidence) - con_confidence) / (np.max(con_confidence) - np.min(con_confidence))
-        gen_ood = getBatchWeigt(ood_data, ood_data_y, ood_data_w, ood_batch)   
-
-    """验证阶段，计算出最佳阈值，实现关注异常/正划分部分"""
-    print("model 进入验证阶段, 开始实现Target功能......")
-    model.eval()
-    _, y_logit = model(torch.tensor(X_val).float().to(device))
-
-        
-    # 未知异常不抛出
-    y_val = copy.deepcopy(Y_val)  
-    # 将已知异常的标签全部置于1，未知异常和正常置为0， 加载的数据集只有0，1标签
-    for i in range(num_anomaly_classes):
-        y_val[(y_val == num_centroid + i)] = 1
-    y_val[(y_val == -1) | (y_val == -2)] = 0
-
-    prob = torch.max(F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:], dim=1)[0].cpu().detach().numpy()
-        
-    # 利用val data选择阈值
-    best_threshold= compute_thresholds(model, X_val, Y_val,num_centroid, num_anomaly_classes,device)
-    print("best_threshold:{}".format(best_threshold))
-
-    # 用阈值给测试集的预测结果重新赋值
-    y_pred = []
-    probs = F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:]
-    logits_anomaly = y_logit[:,-num_anomaly_classes:]
     
-    probs_normal = F.softmax(y_logit, dim = 1)[:,:num_centroid]
-    sum_normal_logits = torch.sum(probs_normal, dim=1).cpu().detach().numpy()
-    
-    for i, sum_logit in enumerate(sum_normal_logits):
-        if sum_logit > num_centroid/num_subgroups:
-            pred_label = 0   #正常打0
-        else:
-            energy = calculate_discrepancy(logits_anomaly[i, -num_anomaly_classes:].unsqueeze(0))
-            energy = torch.Tensor(energy).squeeze(0)
-            if energy > best_threshold: # 已知异常打上1
-                pred_label = 1 
-            else:
-                pred_label = -2  # 剩余样本的预测标签
-        y_pred.append(pred_label)
-    
-    aucroc, aucpr= metric(y_true=y_val, y_score=y_pred)
-    print(f"验证集AUC-ROC: {aucroc:.4f}, AUC-PR: {aucpr:.4f}")
-    if verbose:
-        print("训练完成！")
-    
-    return train_history, model,best_threshold
+    return train_history, model
 
-
-def compute_thresholds(model, inputs, labels,num_centroid, num_anomaly_classes,device):
-    
-    entropy_all = []
-    num_subgroups = num_centroid + num_anomaly_classes
-    # 将已知异常的标签赋为1，正常为0，未知异常为-2
-    labels_ = copy.deepcopy(labels)         #加载的数据集只有0，1标签 
-    for i in range(num_anomaly_classes):
-        labels_[(labels_ == num_centroid + i)] = 1
-    labels_[(labels_ == -1)] = 0
-    labels_[(labels_ == -2)] = -2
-    
-    
-    with torch.no_grad():
-
-        _, logits = model(torch.tensor(inputs).float().to(device))
-        logits_anomaly = logits[:,-num_anomaly_classes:] #关注异常类别得分
-        
-        energy_all = calculate_discrepancy(logits_anomaly[:,:])
-        
-        # 阈值是关注目标异常，故将正常和未知异常置为0
-        target_labels = copy.deepcopy(labels)  
-        for i in range(num_anomaly_classes):
-            target_labels[(target_labels == num_centroid + i)] = 1
-        target_labels[(target_labels == -1)] = 0
-        target_labels[(target_labels == -2)] = 0      #这里与使用数据标签对上，变为0，1标签
-        
-        #前n维正常的和
-        probs_normal = F.softmax(logits, dim = 1)[:,:num_centroid]
-        sum_normal_logits = torch.sum(probs_normal, dim=1).cpu().detach().numpy()
-        #删去被预测为正常的，在剩下的样本中找到阈值
-        # 通过entropy小于某个阈值，识别目标异常
-        new_energy_all = []
-        new_target_labels = []
-        for i, sum_logit in enumerate(sum_normal_logits):
-            if sum_logit <= num_centroid/num_subgroups:
-                new_energy_all.append(energy_all[i])
-                new_target_labels.append(target_labels[i])
-                        
-        fpr_1, tpr_1, thresholds_1 = roc_curve(new_target_labels, new_energy_all)
-
-        optimal_th_1, optimal_point_1 = Find_Optimal_Cutoff(TPR=tpr_1, FPR=fpr_1, threshold=thresholds_1)
-        
-    return optimal_th_1  
 
 def fit_TargAD_main(X_train, y_train,mask,model, autoencoder,optimizer,num_centroid,num_anomaly_classes,
                     stage_1_epochs, stage_2_epochs,kmeans_batch,stage_1_batch, stage_2_batch,anomaly_batch,ood_batch,device,input_dim,embedding_dim,loss_oe,loss_re,stage_one_lr,stage_two_lr,weight_decay,if_split,split_error, verbose=True):
@@ -642,7 +562,7 @@ def autoencoder_pretrain(X_unlabelled,Y_unlabelled, X_labelled_anomaly,autoencod
 
     return X_filter, Y_filter, X_deleted, Y_deleted, score_delete
 
-def predict_TargAD(model,best_threshold,x_test,num_centroid,num_anomaly_classes, device,):
+def predict_TargAD(model,x_test,num_centroid,num_anomaly_classes, device):
     """
     TargAD模型预测函数
 
@@ -654,7 +574,6 @@ def predict_TargAD(model,best_threshold,x_test,num_centroid,num_anomaly_classes,
     Returns:
         anomaly_scores: 异常分数
     """
-    # model.to(device)
     model.eval()
     with torch.no_grad():
         num_subgroups = num_centroid + num_anomaly_classes
@@ -664,76 +583,5 @@ def predict_TargAD(model,best_threshold,x_test,num_centroid,num_anomaly_classes,
            
         # 得到测试集的概率
         prob = torch.max(F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:], dim=1)[0].cpu().detach().numpy()
-
-        # # 用阈值给测试集的预测结果重新赋值
-        # y_pred = []
-        # probs = F.softmax(y_logit, dim = 1)[:,-num_anomaly_classes:]
-        # logits_anomaly = y_logit[:,-num_anomaly_classes:]
-        
-        # probs_normal = F.softmax(y_logit, dim = 1)[:,:num_centroid]
-        # sum_normal_logits = torch.sum(probs_normal, dim=1).cpu().detach().numpy()
-        
-        # energy_all = calculate_discrepancy(logits_anomaly[:, -num_anomaly_classes:])
-        
-        # for i, sum_logit in enumerate(sum_normal_logits):
-        #     if sum_logit > num_centroid/num_subgroups:
-        #         pred_label = 0   #正常打0
-        #     else:
-        #         energy = calculate_discrepancy(logits_anomaly[i, -num_anomaly_classes:].unsqueeze(0))
-        #         energy = torch.Tensor(energy).squeeze(0)
-        #         # eps = 1e-10         
-        #         # reciprocal_ent = 1/(ent+eps)
-        #         if energy > best_threshold: # 已知异常打上1
-        #             pred_label = 1 
-        #         else:
-        #             pred_label = -2  # 剩余样本的预测标签
-        #     y_pred.append(pred_label)
-        
-        # cm_test = confusion_matrix(y_test_new, y_pred, labels = [0,1,-2])    
-     
-        # TP_normal = cm_test[0][0]
-        # FP_normal = cm_test[1][0] + cm_test[2][0]
-        # FN_normal = cm_test[0][1] + cm_test[0][2]
-        
-        # precision_normal = TP_normal / (TP_normal + FP_normal)
-        # recall_normal = TP_normal / (TP_normal + FN_normal)
-        # f1_normal = 2*(precision_normal*recall_normal)/(precision_normal+recall_normal)
-        
-        # TP_anomaly = cm_test[1][1]
-        # FP_anomaly = cm_test[0][1] + cm_test[2][1]
-        # FN_anomaly = cm_test[1][0] + cm_test[1][2]
-        
-        # precision_anomaly = TP_anomaly / (TP_anomaly + FP_anomaly)
-        # recall_anomaly = TP_anomaly / (TP_anomaly + FN_anomaly)
-        # f1_anomaly = 2*(precision_anomaly*recall_anomaly)/(precision_anomaly+recall_anomaly)
-        
-        # TP_unknown = cm_test[2][2]
-        # FP_unknown = cm_test[0][2] + cm_test[1][2]
-        # FN_unknown = cm_test[2][0] + cm_test[2][1]
-        
-        # precision_unknown = TP_unknown / (TP_unknown + FP_unknown)
-        # recall_unknown = TP_unknown / (TP_unknown + FN_unknown)
-        # f1_unknown = 2*(precision_unknown*recall_unknown)/(precision_unknown+recall_unknown)
-        
-        # # 宏平均是直接计算各个类别的平均值，不考虑类别的样本数量。
-        # macro_avg_precision = (precision_normal + precision_anomaly + precision_unknown) / 3
-        # macro_avg_recall = (recall_normal + recall_anomaly + recall_unknown) / 3
-        # macro_avg_f1_score = (f1_normal + f1_anomaly + f1_unknown) / 3
-        
-        
-        # # 加权平均是根据每个类别的样本数量进行加权的平均值。
-        # normal_all = cm_test[0][0] + cm_test[0][1] + cm_test[0][2]
-        # anomaly_all = cm_test[1][0] + cm_test[1][1] + cm_test[1][2]
-        # unknown_all = cm_test[2][0] + cm_test[2][1] + cm_test[2][2]
-        # sample_all = normal_all + anomaly_all + unknown_all
-        
-        # weighted_avg_precision = (precision_normal * normal_all + precision_anomaly * anomaly_all
-        #                          + precision_unknown * unknown_all)/sample_all
-        
-        # weighted_avg_recall = (recall_normal * normal_all + recall_anomaly * anomaly_all
-        #                          + recall_unknown * unknown_all)/sample_all
-        
-        # weighted_avg_f1_score = (f1_normal * normal_all + f1_anomaly * anomaly_all
-        #                          + f1_unknown * unknown_all)/sample_all
 
     return prob
