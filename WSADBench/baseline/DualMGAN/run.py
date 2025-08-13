@@ -47,7 +47,7 @@ class DualMGAN:
     def _init_model(self, input_dim):
         """Initialize model components"""
 
-    def fit(self, X_train, y_train, ratio=None):
+    def fit(self, X_train, y_train,mask, ratio=None):
         """
         Train RoSAS model
 
@@ -83,6 +83,7 @@ class DualMGAN:
         self.model = fit_dual(
             train_x=X_train,
             train_semi_y=semi_y,
+            mask=mask,
             batch_size=batch_size,
             device=self.device,
             verbose=self.verbose,

@@ -115,7 +115,7 @@ class TargAD:
             print(f"设备: {self.device}")
             print(f"model参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self,X,y,mask,X_test=None,y_test=None):
+    def fit(self,X,y,mask):
         """
         训练模型
         Args
@@ -136,7 +136,7 @@ class TargAD:
         self._init_model()
         
         #训练模型
-        self.training_history, self.model, self.best_threshold= fit_TargAD_main(
+        self.training_history, self.model = fit_TargAD_main(
             X_train=X,
             y_train=y,
             mask=mask,
@@ -171,13 +171,6 @@ class TargAD:
         if self.verbose:
             print(f"训练完成，耗时: {training_time:.2f}秒")
 
-            # 如果有测试数据，计算测试性能
-            if X_test is not None and y_test is not None:
-                test_scores = self.predict_proba(X_test)
-                if len(np.unique(y_test)) > 1:
-                    test_auc = roc_auc_score(y_test, test_scores)
-                    test_ap = average_precision_score(y_test, test_scores)
-                    print(f"测试集 AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
 
         return self
     
@@ -195,7 +188,7 @@ class TargAD:
             raise ValueError("Model is not trained yet, please call fit method first")
 
         # Prediction
-        scores = predict_TargAD(self.model,self.best_threshold, X_test,self.num_centroid,self.num_anomaly_classes, self.device)
+        scores = predict_TargAD(self.model, X_test,self.num_centroid,self.num_anomaly_classes, self.device)
 
         return scores
 

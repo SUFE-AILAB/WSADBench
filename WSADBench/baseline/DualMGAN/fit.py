@@ -22,6 +22,7 @@ def sample_noise(batch_size, latent_size, device):
 def fit_dual(
     train_x,
     train_semi_y,
+    mask,
     batch_size,
     device,
     verbose=True,
@@ -29,9 +30,9 @@ def fit_dual(
 ):
     # 拆分成unlabel和ano
     names = locals()
-    mask = train_semi_y == 0  # 获取值为 0 的掩码
-    data_unl_x = train_x[mask]
-    data_out_x = train_x[~mask]
+    #利用掩码划分无标签与有已知标签的数据集
+    data_unl_x = train_x[mask==0]
+    data_out_x = train_x[mask==1]
     data_out_y = np.ones(data_out_x.shape[0])
     data_unl_y = np.zeros(data_unl_x.shape[0])
     data_x = np.concatenate((data_out_x, data_unl_x), axis=0)
