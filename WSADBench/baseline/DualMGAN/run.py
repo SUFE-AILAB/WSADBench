@@ -92,7 +92,7 @@ class DualMGAN:
             args = self.args
         )
 
-        print("NTL model training completed")
+        print("DualMGAN model training completed")
         return self
 
     def predict_score(self, X_test):

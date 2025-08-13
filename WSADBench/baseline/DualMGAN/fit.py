@@ -37,7 +37,7 @@ def fit_dual(
     data_unl_x = train_x[mask]
     data_out_x = train_x[~mask]
     data_out_y = np.ones(data_out_x.shape[0])
-    data_unl_y = np.ones(data_unl_x.shape[0])
+    data_unl_y = np.zeros(data_unl_x.shape[0])
     data_x = np.concatenate((data_out_x, data_unl_x), axis=0)
     data_y = np.concatenate((data_out_y, data_unl_y), axis=0)
     data_out_size = data_out_x.shape[0]
