@@ -1,9 +1,4 @@
-import numpy as np
-from torch.nn import functional as F
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -50,7 +45,6 @@ def get_auc(p_value, data_out_x, data_unl_x):
     data_y_ide = np.array([1] * (int(data_out_x.shape[0])) + [0] * (data_unl_x.shape[0]))
     data_y_ide = pd.DataFrame(data_y_ide)
     auc = roc_auc_score(data_y_ide, p_value)
-    # print('The performance evaluation(auc) of the detector{}'.format(auc))
     return auc
 
 def get_score(p_value, test_y):
@@ -160,9 +154,6 @@ class Detector(nn.Module):
         x = self.dropout(x)
         x = F.sigmoid(self.fc3(x))
         return x
-
-
-
 
 
 def train_discriminator(model, x_batch, y_batch, optimizer, loss_fn):
