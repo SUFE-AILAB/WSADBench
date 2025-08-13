@@ -3,7 +3,6 @@ import numpy as np
 from WSADBench.myutils import Utils
 from WSADBench.baseline.DualMGAN.model import Args
 from WSADBench.baseline.DualMGAN.fit import fit_dual, predict
-# from WSADBench.baseline.DualMGA
 
 class DualMGAN:
     def __init__(
@@ -60,8 +59,6 @@ class DualMGAN:
         Returns:
             self: trained model instance
         """
-        # self.model = TabNeutralAD(X_train.shape[1]) \
-        #     .to(self.device)
         # 单独算batch_size（5等分）
         batch_size = X_train.shape[0] // 5 + 1
         if self.verbose:
@@ -92,7 +89,7 @@ class DualMGAN:
             args = self.args
         )
 
-        print("NTL model training completed")
+        print("DualMGAN model training completed")
         return self
 
     def predict_score(self, X_test):
