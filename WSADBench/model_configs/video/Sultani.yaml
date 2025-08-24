@@ -8,8 +8,8 @@ model_class: WSADBench.baseline.Sultani.run.Sultani
 parameters:
   # 训练参数
   dropout: 0.6
-  epochs: 75
-  batch_size: 30
+  epochs: 75  # 75
+  batch_size: 3
   learning_rate: 0.001
   weight_decay:  0.0010000000474974513
   # 损失权重
@@ -17,3 +17,4 @@ parameters:
   smoothness_weight: 0.00008
   use_scheduler: true
   scheduler_milestones: [25, 50]
+  is_test: False  # 是否每个epoch都测试

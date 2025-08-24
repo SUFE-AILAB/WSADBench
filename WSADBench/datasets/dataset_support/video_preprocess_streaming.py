@@ -6,6 +6,9 @@ CPU处理完一个视频立即交给GPU，不等待批次完成
 """
 
 import os
+# 限制gpu
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 根据实际情况设置可用的GPU设备
+print('connected..')
 import sys
 import argparse
 import yaml
@@ -38,6 +41,7 @@ from WSADBench.myutils import import_class
 from decord import VideoReader, cpu, gpu
 
 from numpy.lib.format import open_memmap
+from WSADBench.datasets.dataset_support.utils import FrameToVideoConverter
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,44 @@ class VideoProcessor:
         self.to_pil = ToPILImage()
         self.resize_transform = Resize(self.resize_dims)
 
+    def _safe_get_batch(self, video_reader, start_frame: int, end_frame: int) -> Optional[np.ndarray]:
+        """安全地批量读取视频帧"""
+        try:
+            # 方法1：直接批量读取
+            frame_indices = range(start_frame, end_frame)
+            frames = video_reader.get_batch(frame_indices).asnumpy()
+            return frames
+
+        except Exception as e:
+            logger.warning(f"Batch frame reading failed ({start_frame}-{end_frame}): {e}")
+
+            # 方法2：逐帧读取
+            try:
+                frames_list = []
+                for idx in range(start_frame, end_frame):
+                    try:
+                        frame = video_reader[idx].asnumpy()
+                        frames_list.append(frame)
+                    except Exception as frame_error:
+                        logger.warning(f"Failed to read frame {idx}: {frame_error}")
+                        # 跳过损坏的帧或重复上一帧
+                        if frames_list:
+                            frames_list.append(frames_list[-1])  # 重复最后一帧
+                        else:
+                            continue  # 如果是第一帧就跳过
+
+                if frames_list:
+                    frames = np.stack(frames_list, axis=0)
+                    logger.debug(f"Successfully read {len(frames_list)} frames individually")
+                    return frames
+                else:
+                    logger.error("No frames could be read")
+                    return None
+
+            except Exception as individual_error:
+                logger.error(f"Individual frame reading also failed: {individual_error}")
+                return None
+
     def process_video(self, video_info: Tuple[str, str]) -> Generator[Dict, None, None]:
         """处理单个视频 - 生成器模式，每次yield一个segment级别的任务"""
         video_path, relative_path = video_info
@@ -104,13 +146,26 @@ class VideoProcessor:
 
         try:
             video_reader = VideoReader(video_path, ctx=cpu())
+
             total_frames = len(video_reader)
             all_clips = int(np.ceil(total_frames / self.num_frames)) if self.num_clips == -1 else self.num_clips
 
             start_read_frame = 0
             while start_read_frame < total_frames:
-                end_read_frame = min(start_read_frame + max_frames_in_block, total_frames)
-                frames_npy = video_reader.get_batch(range(start_read_frame, end_read_frame)).asnumpy()
+                try:
+                    end_read_frame = min(start_read_frame + max_frames_in_block, total_frames)
+                    frames_npy = self._safe_get_batch(video_reader, start_read_frame, end_read_frame)
+                except Exception as e:
+                    logger.warning(f"Failed to read frame {start_read_frame}: {e}")
+                if frames_npy is None:
+                    logger.error(f"Failed to read frames {start_read_frame}-{end_read_frame} from {video_name}")
+                    yield {
+                        "status": "failed",
+                        "video_name": video_name,
+                        "error": f"Failed to read frames {start_read_frame}-{end_read_frame}"
+                    }
+                    return
+                # frames_npy = video_reader.get_batch(range(start_read_frame, end_read_frame)).asnumpy()
                 frames = torch.from_numpy(frames_npy).float()
                 frames = frames.permute(3, 0, 1, 2)  # [T, H, W, C] -> [C, T, H, W]
 
@@ -267,6 +322,7 @@ class GPUWorker:
         self.device = torch.device(f"cuda:{device_id}")
         self.model = None
         self.modality = config["PREPROCESS"].get("MODALITY", "RGB")
+        self.frame_converter = None  # 帧转视频
 
         # 使用全局共享的视频状态跟踪
         self.global_video_locks = global_video_locks
@@ -311,15 +367,36 @@ class GPUWorker:
                 self.global_video_processed_tags[video_name] = np.zeros(all_clips, dtype=bool)
 
             return memmap_array
+    def _expand_frames_on_gpu(self, clips: torch.Tensor) -> torch.Tensor:
+        """在GPU上扩展帧数"""
+        # clips: [clip_num, num_crops, C, T, H, W]
+        clip_num, num_crops, C, T, H, W = clips.shape
+        device = clips.device
 
+        # 生成等距时间索引（长度32），映射到 [0, T-1]
+        t_src = torch.linspace(0, T - 1, steps=32, device=device)
+        idx = torch.round(t_src).clamp(0, T - 1).long()
+
+        # 使用reshape而不是view，或者先确保tensor连续
+        x = clips.reshape(-1, C, T, H, W)  # 改为reshape
+        x = x.index_select(dim=2, index=idx)  # [B, C, 32, H, W]
+
+        # 确保输出tensor连续，然后reshape
+        return x.contiguous().reshape(clip_num, num_crops, C, 32, H, W)
     def extract_features(self, clips: torch.Tensor) -> torch.Tensor:
         """提取特征"""
         clip_num, num_crops, channels, frames, height, width = clips.shape
+        # 检查是否需要为MViT 或 SlowFast 扩展帧数
+        model_name = type(self.model).__name__
+        if ('MViT32' in model_name or 'SlowFast' in model_name)and frames == 16:
+            # 在GPU上进行帧扩展，避免CPU-GPU数据传输开销
+            logger.debug(f"GPU {self.device_id}: Expanding frames from {frames} to 32 for MViT")
+            clips = self._expand_frames_on_gpu(clips)
+            frames = clips.shape[3]
         clips_reshaped = clips.reshape(-1, channels, frames, height, width)
 
         batch_size = self.config["PREPROCESS"].get("MODEL_BATCH_SIZE", 32)
         features_list = []
-
         with torch.no_grad():
             for i in range(0, clips_reshaped.shape[0], batch_size):
                 batch = clips_reshaped[i : i + batch_size].to(self.device)
@@ -837,11 +914,11 @@ class StreamingVideoPreprocessor:
             os.makedirs(output_dir, exist_ok=True)
 
             # 复制指定的文件和目录
-            if "COPY" in self.config["PREPROCESS"]:
+            if "COPY" in self.config["PREPROCESS"]:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/source_datasets/shanghaitech/splits
                 for src, dst in self.config["PREPROCESS"]["COPY"]:
                     src_path = os.path.join(input_dir, src)
                     dst_path = os.path.join(output_dir, dst)
-
+                    # print(os.path.exists(r'WSADBench/datasets/source_datasets/UCF_Crime/splits'))
                     if os.path.exists(src_path):
                         if os.path.isdir(src_path):
                             if os.path.exists(dst_path):
@@ -851,9 +928,80 @@ class StreamingVideoPreprocessor:
                             os.makedirs(os.path.dirname(dst_path), exist_ok=True)
                             shutil.copy2(src_path, dst_path)
                         logger.info(f"Copied {src_path} to {dst_path}")
+                    else:
+                        logger.warning(f"Source file {src_path} does not exist")
+            if 'shanghaitech' in input_dir:  # 判断是否为shanghaitech
+                logger.info("Processing Shanghai dataset - converting frames to videos")
 
+                # 创建帧到视频转换器
+                self.frame_converter = FrameToVideoConverter(fps=30)
+                # 将帧序列转换为视频文件
+                video_files = self.frame_converter.process_shanghai_dataset(raw_data_dir)
+                # 记录转换后的视频位置
+                logger.info(f"Converted frame sequences to {len(video_files)} video files in temporary directory")
+                logger.info(f"Temporary video directory: {self.frame_converter.temp_dir}")
+
+            elif 'TAD' in input_dir:
+                logger.info("Processing TAD dataset - converting frames to videos")
+
+                # 创建帧到视频转换器
+                self.frame_converter = FrameToVideoConverter(fps=30)
+
+                try:
+                    # 尝试使用支持分类的处理方法
+                    video_files = self.frame_converter.process_tad_dataset(raw_data_dir)
+
+
+                    logger.info(f"Converted TAD frame sequences to {len(video_files)} video files")
+                    logger.info(f"Temporary video directory: {self.frame_converter.temp_dir}")
+
+                    # 记录转换的视频统计信息
+                    if video_files:
+                        categories = {}
+                        for _, relative_path in video_files:
+                            category = relative_path if relative_path else "No Category"
+                            categories[category] = categories.get(category, 0) + 1
+
+                        logger.info("TAD video conversion summary:")
+                        for category, count in categories.items():
+                            logger.info(f"  {category}: {count} videos")
+
+                except Exception as e:
+                    logger.error(f"Error processing TAD dataset: {e}")
+                    video_files = []
+                    raise
+            elif 'UCSD' in input_dir:
+                logger.info("Processing UCSD_Ped2 dataset - converting frames to videos")
+
+                # 创建帧到视频转换器
+                self.frame_converter = FrameToVideoConverter(fps=30)
+
+                try:
+                    # 处理UCSD_Ped2数据集
+                    video_files = self.frame_converter.process_ucsd_ped2_dataset(raw_data_dir)
+
+                    logger.info(f"Converted UCSD_Ped2 frame sequences to {len(video_files)} video files")
+                    logger.info(f"Temporary video directory: {self.frame_converter.temp_dir}")
+
+                    # 记录转换的视频统计信息
+                    if video_files:
+                        splits = {}
+                        for _, relative_path in video_files:
+                            split_name = relative_path.split('/')[0] if '/' in relative_path else "Unknown"
+                            splits[split_name] = splits.get(split_name, 0) + 1
+
+                        logger.info("UCSD_Ped2 video conversion summary:")
+                        for split_name, count in splits.items():
+                            logger.info(f"  {split_name}: {count} videos")
+
+                except Exception as e:
+                    logger.error(f"Error processing UCSD_Ped2 dataset: {e}")
+                    video_files = []
+                    raise
+            else:
+                logger.info("Processing standard video dataset")
+                video_files = []
             # 查找所有视频文件
-            video_files = []
             video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".wmv"]
 
             for root, dirs, files in os.walk(raw_data_dir):
@@ -872,7 +1020,9 @@ class StreamingVideoPreprocessor:
                         video_files.append((full_path, relative_path))
 
             logger.info(f"Found {len(video_files)} video files to process")
-
+            # 只取部分做实验
+            # video_files = video_files[:2]
+            print(f'sample videos: {len(video_files)}')
             if not video_files:
                 logger.info("No video files to process")
                 return
@@ -1009,6 +1159,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+# 设置环境变量并运行特征提取
+export PYTHONPATH=.
+CUDA_VISIBLE_DEVICES=0,1 python WSADBench/datasets/dataset_support/video_preprocess_streaming.py \
+    --config_path WSADBench/datasets/dataset_configs/CV_by_I3D/Shanghai.prep.rgb.yaml \
+    --resume \
+    --max_queue 10 \
+    --memory_limit 0.8 \
+    --segment_len 500 \
+    --log_level INFO
+"""
+
 
 """
 Example usage:

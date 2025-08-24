@@ -1,0 +1,28 @@
+PREPROCESS:  # /data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2
+    INPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/'
+    OUTPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/CV_by_I3D/UCSD_Ped2/'
+    RAW_DATA_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/raw_data/'
+
+    # 复制split文件和标注文件
+    COPY:
+    - ['splits', 'splits']
+    - ['Annotation.txt', 'Annotation.txt']
+
+    # 视频处理参数
+    NUM_FRAMES: 16  # 每个clip的帧数
+    NUM_CLIPS: -1  # -1表示提取所有可能的clips
+    RESIZE: [256, 256]  # resize尺寸
+    CROP_SIZE: 224  # 最终crop尺寸
+    CROPS: "Ten"  # 裁剪类型: Ten, Five, None
+
+    # 模型相关
+    MODEL: WSADBench.datasets.dataset_support.pretrained_models.I3DFeatureExtractorRGB
+    WEIGHTS_PATH: null  # 如果使用预训练权重，在此指定路径
+    MODEL_BATCH_SIZE: 16  # 模型推理批大小
+
+    # 输出设置
+    MODALITY: RGB  # RGB 或 FLOW
+    MODALITY_SAVE_DIR: 'all_rgbs'
+    SEGMENTATION:
+      SEGMENTATION_DIR: 'segmentation'
+      EXCLUDE_SEGMENT_LIST: [ ]

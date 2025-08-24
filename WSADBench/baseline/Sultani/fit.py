@@ -8,9 +8,14 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset
 from typing import Tuple, Dict, Any, Optional, List
 import time
+# from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
+from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
+logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='sultani')
+from common_utils.baseline_utils import get_gt
 
 
 def mil_loss(y_pred, batch_size, sparsity_weight=0.00008, smoothness_weight=0.00008):
@@ -68,10 +73,39 @@ def mil_loss(y_pred, batch_size, sparsity_weight=0.00008, smoothness_weight=0.00
     
     return total_loss
 
+# @staticmethod
+def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames):
+    """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
+    _clips_num, _crops_num = video_shape
 
-def fit_sultani(model, optimizer, train_loader, epochs, device, 
-                sparsity_weight=0.00008, smoothness_weight=0.00008,
-                verbose=True, scheduler=None):
+    # 平均每个crop, 获得每个clip的分数
+    scores = scores.reshape(_clips_num, _crops_num)
+    scores = np.mean(scores, axis=1)
+
+    # 还原clip级别score为帧级别score
+    # y_test_idx = data["y_test_idx"]
+    # y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+    # num_clip_frames = data["NUM_FRAMES"]
+
+    frame_scores = []
+    frame_truth = []
+    for i in range(max(y_test_gt_idx) + 1):
+        select_gt = y_test_gt[y_test_gt_idx == i]
+        select_scores = scores[y_test_idx == i]
+        select_scores = select_scores.repeat(num_clip_frames)
+        common_length = min(len(select_gt), len(select_scores))
+
+        frame_scores.append(select_scores[:common_length])
+        frame_truth.append(select_gt[:common_length])
+
+    frame_scores = np.concatenate(frame_scores, axis=0)
+    frame_truth = np.concatenate(frame_truth, axis=0)
+    # frame_truth存到本地
+    # np.save("frame_label/xd_frame_gt.npy", frame_truth)
+    return frame_scores, frame_truth
+
+def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
+                       verbose=True, normal_loader=None, anomaly_loader=None):
     """
     训练Sultani模型
     
@@ -90,7 +124,8 @@ def fit_sultani(model, optimizer, train_loader, epochs, device,
         训练历史
     """
     model.train()
-    
+    sparsity_weight =  trainer.sparsity_weight
+    smoothness_weight = trainer.smoothness_weight
     train_history = {
         'loss': [],
         'epoch_time': []
@@ -100,44 +135,55 @@ def fit_sultani(model, optimizer, train_loader, epochs, device,
         print(f"开始训练Sultani模型，共{epochs}轮...")
         print(f"设备: {device}")
         print(f"稀疏性权重: {sparsity_weight}, 平滑性权重: {smoothness_weight}")
-    
+    X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
+    best_epoch = -1
+    best_auc = 0.0
+    best_ap = 0
+    best_epoch_v2 = -1
+    best_auc_v2 = 0.0
+    best_ap_v2 = 0
+
+    logger.info('start train ...')
     for epoch in range(epochs):
         epoch_start_time = time.time()
         epoch_loss = 0.0
         batch_count = 0
-        
-        for batch_idx, (normal_data, anomaly_data) in enumerate(train_loader):
+        for batch_idx, (normal_data, anomaly_data) in enumerate(zip(normal_loader, anomaly_loader)):
             optimizer.zero_grad()
-            
+
             # 将数据移到设备
-            normal_data = normal_data.to(device)
-            anomaly_data = anomaly_data.to(device)
-            
-            batch_size = normal_data.shape[0]
-            
-            # 合并正常和异常数据 [batch_size, 64, feature_dim]
-            # 前32个为异常，后32个为正常
-            inputs = torch.cat([anomaly_data, normal_data], dim=1)
-            
+            normal_data = normal_data.to(device)  # [batch_size, crops_num, seq_len, feature_dim]
+            anomaly_data = anomaly_data.to(device)  # [batch_size, crops_num, seq_len, feature_dim]
+
+            batch_size, crops_num, seq_len, feature_dim = normal_data.shape
+            # 沿着seq_len维度拼接，前seq_len个为异常，后seq_len个为正常
+            inputs = torch.cat([anomaly_data, normal_data],
+                               dim=2)  # [batch_size, crops_num, 2*seq_len, feature_dim]
+
+            # 重塑为模型期望的输入格式
+            inputs = inputs.view(batch_size * crops_num, 2 * seq_len, feature_dim)
+
             # 前向传播
-            outputs = model(inputs)  # [batch_size, 64, 1]
-            
-            # 计算损失
-            loss = mil_loss(outputs, batch_size, sparsity_weight, smoothness_weight)
-            
+            outputs = model(inputs)  # [batch_size * crops_num, 2*seq_len, 1]
+
+            # 修正：重塑输出以匹配MIL损失期望的格式
+            outputs = outputs.view(batch_size * crops_num, 2 * seq_len)  # [batch_size * crops_num, 2*seq_len]
+
+            # 计算损失 - 使用实际的batch_size * crops_num
+            loss = mil_loss(outputs, batch_size * crops_num, sparsity_weight, smoothness_weight)
+
             # 反向传播
             loss.backward()
             optimizer.step()
-            
+
             epoch_loss += loss.item()
             batch_count += 1
-            
+
             if verbose and batch_idx % 10 == 0:
-                print(f'Epoch {epoch+1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
-        
+                print(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
         # 学习率调度
-        if scheduler is not None:
-            scheduler.step()
+        if trainer.scheduler is not None:
+            trainer.scheduler.step()
         
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
@@ -147,73 +193,35 @@ def fit_sultani(model, optimizer, train_loader, epochs, device,
         
         if verbose:
             print(f'Epoch {epoch+1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
-    
+        if X_test is not None and trainer.is_test:
+            trainer.fitted = True
+            # 处理video分数的特殊逻辑：从clip级别还原到帧级别
+            with torch.no_grad():
+                scores = trainer.predict_proba(X_test)  # 得分696270
+                prob = np.repeat(scores, 16)
+                gt = get_gt(len(prob))
+                test_auc_v2 = roc_auc_score(gt, prob)
+                test_ap_v2 = average_precision_score(gt, prob)
+
+                frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt,
+                                                                  y_test_gt_idx,
+                                                                  num_clip_frames)
+                test_auc = roc_auc_score(frame_truth, frame_scores)
+                test_ap = average_precision_score(frame_truth, frame_scores)
+                if best_auc < test_auc:
+                    best_epoch = epoch
+                    best_auc = test_auc
+                    best_ap = test_ap
+                if best_auc_v2 < test_auc_v2:
+                    best_epoch_v2 = epoch
+                    best_auc_v2 = test_auc_v2
+                    best_ap_v2 = test_ap_v2
+                logger.info(
+                    f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                logger.info(
+                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+
     if verbose:
         print("训练完成！")
     
     return train_history
-
-
-def fit_sultani_main(X_train, y_train, model, optimizer, epochs, batch_size, device,
-                      sparsity_weight=0.00008, smoothness_weight=0.00008, verbose=True):
-    """
-    Args:
-        X_train: 训练特征 [n_samples, feature_dim]
-        y_train: 训练标签 [n_samples]
-        model: Sultani模型
-        optimizer: 优化器
-        epochs: 训练轮数
-        batch_size: 批量大小
-        device: 计算设备
-        sparsity_weight: 稀疏性损失权重
-        smoothness_weight: 平滑性损失权重
-        verbose: 是否打印训练信息
-        
-    Returns:
-        训练历史
-    """
-    model.train()
-    
-    # 分离正常和异常数据
-    normal_mask = y_train == 0
-    anomaly_mask = y_train == 1
-    
-    X_normal = X_train[normal_mask]
-    X_anomaly = X_train[anomaly_mask]
-    
-    if len(X_anomaly) == 0 or len(X_normal) == 0:
-        raise ValueError("训练数据中必须同时包含正常和异常样本")
-    
-    normal_clips_num, anomaly_clips_num = X_normal.shape[0], X_anomaly.shape[0]
-    
-    
-    # 通过过采样确保正常样本与异常样本数量相同
-    if normal_clips_num < anomaly_clips_num:
-        # 重复正常样本直到数量与异常样本相同
-        repeat_times = (anomaly_clips_num + normal_clips_num - 1) // normal_clips_num
-        X_normal = np.tile(X_normal, (repeat_times, 1))[:anomaly_clips_num]
-    elif anomaly_clips_num < normal_clips_num:
-        # 重复异常样本直到数量与正常样本相同
-        repeat_times = (normal_clips_num + anomaly_clips_num - 1) // anomaly_clips_num
-        X_anomaly = np.tile(X_anomaly, (repeat_times, 1))[:normal_clips_num]
-    
-    assert len(X_normal) == len(X_anomaly), "采样后正常样本和异常样本数量仍不匹配"
-    data_len = len(X_normal)
-    
-    # 重塑数据为视频段格式
-    segments_per_video = 32
-    segments_num = data_len // segments_per_video
-    
-    X_normal_videos = X_normal[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-    X_anomaly_videos = X_anomaly[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-    
-    # 创建训练数据集
-    train_dataset = TensorDataset(
-        torch.FloatTensor(X_normal_videos),
-        torch.FloatTensor(X_anomaly_videos)
-    )
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    
-    # 调用主训练函数
-    return fit_sultani(model, optimizer, train_loader, epochs, device,
-                      sparsity_weight, smoothness_weight, verbose)

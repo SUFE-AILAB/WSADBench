@@ -7,16 +7,20 @@ model_class: WSADBench.baseline.URDMU.run.URDMU
 parameters:
   # 训练参数
   dropout: 0.6
-  epochs: 1
-  batch_size: 64
-  learning_rate: 0.001
+  epochs: 3000  # 这里是3000步，而不是3000epoch
+  step: 3000  # 3000
+  batch_size: 32  # 以及这个batch应该是 32？因为要2倍
+  learning_rate: 0.0001  # 论文是0.0001
   weight_decay:  0.00005
   # 损失权重
-
-  input_size: 2048
   flag: "Train"
   a_nums: 60
   n_nums: 60
+  seg: 32  # 无效
+  use_scheduler: true
+  scheduler_milestones: [ 1000, 2000 ]
+  is_test: false
+
 
 # 模型参数
 # parameters:

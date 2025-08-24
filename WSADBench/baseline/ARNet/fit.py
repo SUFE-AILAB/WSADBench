@@ -55,7 +55,7 @@ def KMXMILL_individual(y_pred,                       #y_pred = y_pred
     real_label = torch.zeros(0).to(device)     #[120,32]
     real_size = int(y_pred.shape[0])       #120
     for i in range(real_size):
-        tmp, tmp_index = torch.topk(y_pred[i][:seq_len[i]], k=int(k[i]), dim=0) #挑选前k[i]个最大分数（即异常置信度最高的k个clip）
+        tmp, tmp_index = torch.topk(y_pred[i][:int(seq_len[i])], k=int(k[i]), dim=0) #挑选前k[i]个最大分数（即异常置信度最高的k个clip） #挑选前k[i]个最大分数（即异常置信度最高的k个clip）
         instance_logits = torch.cat((instance_logits, tmp), dim=0)    #[sum(k[i])]
         
         if labels[i] == 1:
@@ -134,8 +134,8 @@ def total_loss(y_pred, batch_size,seq_len,labels,device,k,DMIL_weight=1.000,Cent
 
     return total_loss
 
-def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_size,device,k=4,DMIL_weight=1.000,Center_weight=20.000,  #seq_len为lstm添加
-          verbose=True,scheduler=None):
+def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
+                       verbose=True, normal_loader=None, anomaly_loader=None):
     """
     训练ARNeet模型
     
@@ -164,6 +164,10 @@ def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_siz
         'epoch_time': []
     }
 
+    DMIL_weight = trainer.DMIL_weight
+    Center_weight = trainer.Center_weight
+    model_name = trainer.model_name
+    k = trainer.k
 
     if verbose:
         print(f"开始训练ARNet模型，共{epochs}轮...")
@@ -176,13 +180,15 @@ def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_siz
         epoch_loss = 0.0
         batch_count = 0
 
-        for batch_idx, (normal_data, anomaly_data) in enumerate(train_loader):
+        for batch_idx, (normal_data, anomaly_data) in enumerate(zip(normal_loader, anomaly_loader)):
             optimizer.zero_grad()
             
             # 将数据移到设备     shape[60,32,2048]  B,T,F
-            normal_data = normal_data.to(device)
+            normal_data = normal_data.view(-1, normal_data.size(2), normal_data.size(3))
+            normal_data = normal_data.to(device)  # 从[3,10, 32, 2048]变成[30, 32, 2048]
+            anomaly_data = anomaly_data.view(-1, anomaly_data.size(2), anomaly_data.size(3))
             anomaly_data = anomaly_data.to(device)
-            
+            batch_size = normal_data.shape[0]
             # 合并正常和异常数据 [batch_size, 32, feature_dim]
             # 前32个为异常，后32个为正常  -> [B*2,32,2048]
             inputs = torch.cat([anomaly_data, normal_data], dim=0)   #改
@@ -195,7 +201,10 @@ def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_siz
                 _, y_pred = model(inputs, seq_len)
             else:
                 _, y_pred = model(inputs)
-            
+            labels = torch.cat([
+                        torch.ones(batch_size).to(device),    # 异常视频标签
+                        torch.zeros(batch_size).to(device)    # 正常视频标签
+                    ])
             # 计算损失
             loss = total_loss(
                 y_pred, batch_size,seq_len,labels,device,k=4,DMIL_weight=1.000,Center_weight=20.000
@@ -216,8 +225,8 @@ def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_siz
             torch.cuda.empty_cache()
         
         # 学习率调度
-        if scheduler is not None:
-            scheduler.step()
+        if trainer.scheduler is not None:
+            trainer.scheduler.step()
         
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
@@ -237,78 +246,3 @@ def fit_ARNet(model, labels,model_name,optimizer, train_loader, epochs,batch_siz
         print("训练完成！")
     
     return train_history
-
-
-def fit_ARNet_main(X_train, y_train, model,model_name,optimizer,segments_per_video, epochs, batch_size, device,k,    #seq_len为lstm添加
-                      DMIL_weight,Center_weight, verbose=True):
-    # global train_loader
-    """
-    Args:
-        X_train: 训练特征 [n_samples, feature_dim]
-        y_train: 训练标签 [n_samples]
-        labels:拼接后的视频标签
-        model: ARNet模型
-        optimizer: 优化器
-        epochs: 训练轮数
-        batch_size: 批量大小
-        device: 计算设备
-        sparsity_weight: 稀疏性损失权重
-        smoothness_weight: 平滑性损失权重
-        verbose: 是否打印训练信息
-        
-    Returns:
-        训练历史
-    """
-    model.train()
-    
-    # 分离正常和异常数据
-    normal_mask = y_train == 0
-    anomaly_mask = y_train == 1
-    
-    X_normal = X_train[normal_mask]
-    X_anomaly = X_train[anomaly_mask]
-    
-    if len(X_anomaly) == 0 or len(X_normal) == 0:
-        raise ValueError("训练数据中必须同时包含正常和异常样本")
-    
-    normal_clips_num, anomaly_clips_num = X_normal.shape[0], X_anomaly.shape[0]
-    
-    
-    # 通过过采样确保正常样本与异常样本数量相同
-    if normal_clips_num < anomaly_clips_num:
-        # 重复正常样本直到数量与异常样本相同
-        repeat_times = (anomaly_clips_num + normal_clips_num - 1) // normal_clips_num
-        X_normal = np.tile(X_normal, (repeat_times, 1))[:anomaly_clips_num]
-    elif anomaly_clips_num < normal_clips_num:
-        # 重复异常样本直到数量与正常样本相同
-        repeat_times = (normal_clips_num + anomaly_clips_num - 1) // anomaly_clips_num
-        X_anomaly = np.tile(X_anomaly, (repeat_times, 1))[:normal_clips_num]
-    
-    assert len(X_normal) == len(X_anomaly), "采样后正常样本和异常样本数量仍不匹配"
-    data_len = len(X_normal)
-    
-    # 重塑数据为视频段格式
-    segments_num = data_len // segments_per_video 
-    #reshape为->[7960,32]
-    X_normal_videos = X_normal[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-    X_anomaly_videos = X_anomaly[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-    
-    # 创建训练数据集
-    train_dataset = TensorDataset(
-        torch.FloatTensor(X_normal_videos),
-        torch.FloatTensor(X_anomaly_videos)
-    )     #torch方法执行后 [7960,32,2048]
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
-    # 创建视频级标签
-            # 正常视频标签为0，异常视频标签为1
-    labels = torch.cat([
-        torch.ones(batch_size).to(device),    # 异常视频标签
-        torch.zeros(batch_size).to(device)    # 正常视频标签
-    ])
-
-    # 创建参数对象
-    args = argparse.Namespace(k=4, model_name='model_concatcate')    #可根据需要修改参数，目前model_single,model_mean,model_sequence,model_concatcate是OK的
-    # 调用主训练函数
-    return fit_ARNet(model ,labels,model_name,optimizer, train_loader, epochs,batch_size, device,k,       #seq_len为lstm添加
-                      DMIL_weight, Center_weight,verbose=True)

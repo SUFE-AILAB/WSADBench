@@ -1,0 +1,20 @@
+PREPROCESS:
+    MODALITY: RGB
+    INPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/shanghaitech/'
+    OUTPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/CV_by_SlowFast/shanghaitech/'
+    RAW_DATA_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/shanghaitech/raw_data/'
+    MODALITY_SAVE_DIR: 'all_rgbs'
+    RESIZE: [340, 256]
+    NUM_CLIPS: -1  # 提取所有可能的clips
+    NUM_FRAMES: 16
+    NUM_CLASSES: 2  # 正常和异常
+    CROPS: Ten
+    CROP_SIZE: 224
+    MODEL: WSADBench.datasets.dataset_support.pretrained_models.SlowFastFeatureExtractor # I3DFeatureExtractorRGB
+    MODEL_BATCH_SIZE: 32
+    COPY:
+        - ['splits', 'splits']
+        - ['shanghaitech_Annotation.txt', 'shanghaitech_Annotation.txt']  # 复制帧级别标注
+    SEGMENTATION:
+        SEGMENTATION_DIR: 'segmentation'
+        EXCLUDE_SEGMENT_LIST: []
