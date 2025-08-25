@@ -316,7 +316,8 @@ class ZhongGCNAD:
 
     def _train_gcn(self, train_dataset: CustomDataset, variances: np.ndarray, epochs: int):
         """内部函数：训练GCN标签清洁器"""
-        self.gcn_model = NoiseFilter(nfeat=self.gcn_feat_dim, dropout_rate=self.dropout).to(self.device)
+        if self.gcn_model is None:
+            self.gcn_model = NoiseFilter(nfeat=self.gcn_feat_dim, dropout_rate=self.dropout).to(self.device)
         self.gcn_model.train()
 
         optimizer = torch.optim.SGD(
