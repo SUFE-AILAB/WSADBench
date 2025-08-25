@@ -68,26 +68,6 @@ def process_feat(feat, length, is_random=False):
     else:
         return pad(feat, length), clip_length
 
-def process_split(feat, length):
-    clip_length = feat.shape[0]
-    if clip_length < length:
-        return pad(feat, length), clip_length
-    else:
-        split_num = int(clip_length / length) + 1
-        for i in range(split_num):
-            if i == 0:
-                split_feat = feat[i * length:i * length + length, :].reshape(1, length, feat.shape[1])
-            elif i < split_num - 1:
-                split_feat = np.concatenate(
-                    [split_feat, feat[i * length:i * length + length, :].reshape(1, length, feat.shape[1])], axis=0)
-            else:
-                split_feat = np.concatenate([split_feat,
-                                             pad(feat[i * length:i * length + length, :], length).reshape(1, length,
-                                                                                                          feat.shape[
-                                                                                                              1])],
-                                            axis=0)
-
-        return split_feat, clip_length
 
 
 def get_batch_mask(lengths, maxlen):
@@ -251,6 +231,7 @@ class CLIPVAD(nn.Module):
                  visual_head=1,
                  visual_length=32,
                  pt_path = None,
+                 lam =None,
                  ):
         """
         初始化Sultani学习器
@@ -269,6 +250,7 @@ class CLIPVAD(nn.Module):
         self.prompt_prefix = prompt_prefix
         self.prompt_postfix = prompt_postfix
         self.visual_length = visual_length
+        self.lam = lam
         # self.pt_path = pt_path
         self.temporal = Transformer(
             width=visual_width,

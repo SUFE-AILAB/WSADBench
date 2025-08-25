@@ -1,0 +1,21 @@
+PREPROCESS:
+    MODALITY: RGB
+    INPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/XD-violence/'
+    OUTPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/CV_by_MViT_32/XD-violence/'
+    RAW_DATA_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/XD-violence/raw_data/'
+    MODALITY_SAVE_DIR: 'all_rgbs'
+    RESIZE: [340, 256]
+    NUM_CLIPS: -1
+    NUM_FRAMES: 16
+    NUM_CLASSES: 2
+    CROPS: Ten
+    CROP_SIZE: 224
+    MODEL: WSADBench.datasets.dataset_support.pretrained_models.MViT32FeatureExtractor
+    MODEL_BATCH_SIZE: 32
+    COPY:
+        - ['splits', 'splits']
+        - ['Annotation.txt', 'Annotation.txt']
+    SEGMENTATION:
+        SEGMENTATION_DIR: 'segmentation'
+        EXCLUDE_SEGMENT_LIST:
+            - Testing_Normal_Videos_Anomaly

@@ -7,10 +7,13 @@ model_class: WSADBench.baseline.VadClip.run.VadClip
 # 模型参数
 parameters:
   # 训练参数
-  epochs: 5
-  batch_size: 64
+  epochs: 10  # 默认是10
+  batch_size: 32  # 32*2=64
   learning_rate: 0.00002  # 写2e-5会成为str
   use_scheduler: true
-  scheduler_milestones: [4, 8]
+  scheduler_milestones: [4, 8]  # 40% 80%
   scheduler_gamma: 0.1
-  visual_length: 32
+  visual_length: 256
+  pt_path: '/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/data/pt/ViT-B-16.pt'
+  lam: 0.1  # ucf: 0.1  xd: 0.0001
+  is_test: false

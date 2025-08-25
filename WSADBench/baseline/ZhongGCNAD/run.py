@@ -390,7 +390,7 @@ class ZhongGCNAD:
             vid_info (np.ndarray): 视频ID信息，形状为 (total_rows,).
             crops_num (int): 每个clip的crop数量，必须提供以便正确重塑数据.
         """
-        assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."
+        assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."  # 没有类别标签
         clips_num = X.shape[0] // crops_num
         
         # 重塑X并计算每个clip的平均特征

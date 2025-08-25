@@ -14,7 +14,8 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.VadClip.model import CLIPVAD, get_batch_mask
-from WSADBench.baseline.VadClip.fit import fit_sultani_main, VideoDataset, prompt_text
+from WSADBench.baseline.VadClip.fit import fit as fit_main, get_prompt_text
+from common_utils.baseline_utils import VideoDataset_VadClip as VideoDataset, fit_VadClip
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import math
@@ -23,7 +24,6 @@ class VadClip:
         self,
         seed: int = 42,
         # 模型参数
-        input_dim: int = 2048,
         # 训练参数
         epochs: int = 75,
         batch_size: int = 30,
@@ -35,7 +35,9 @@ class VadClip:
         verbose: bool = True,
         scheduler_gamma=0.1,
         visual_length = None,
-        pt_path = None
+        pt_path = None,
+        lam = None,
+        is_test=None,
     ):
         """
         初始化Sultani模型
@@ -57,7 +59,7 @@ class VadClip:
         """
 
         self.seed = seed
-        self.input_dim = input_dim  # 2048？
+        # self.input_dim = input_dim  # 2048？
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -69,6 +71,9 @@ class VadClip:
 
         self.visual_length = visual_length
         self.pt_path = pt_path
+        self.lam = lam
+        self.label_map = dict()
+        self.is_test = is_test
         # 内部状态
         self.model = None
         self.optimizer = None
@@ -88,7 +93,7 @@ class VadClip:
         """初始化模型"""
         if self.model is None:
             # 创建模型
-            self.model = CLIPVAD(input_dim=self.input_dim, device=self.device, visual_length = self.visual_length, pt_path=self.pt_path).to(self.device)
+            self.model = CLIPVAD(input_dim=self.input_dim, device=self.device, visual_length = self.visual_length, pt_path=self.pt_path, num_class=self.num_class, lam=self.lam).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.AdamW(
@@ -103,7 +108,9 @@ class VadClip:
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y, vid_info=None, vid_source_clips_num=None, vid_kind=None, X_test=None, y_test=None, crops_num=None):
+
+    def fit(self, X, y, vid_info=None, vid_source_clips_num=None, vid_kind=None, X_test=None,
+            y_test=None, crops_num=None, X_test_extra=None):
         """
         训练Sultani模型
 
@@ -126,12 +133,29 @@ class VadClip:
             print(f"正常样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
 
         # 数据预处理
-        # X = self._preprocess_data(X)
+        self.input_dim = X.shape[-1]
+        # 取出标签
+        """
+        label_map = dict({'Normal': 'normal', 'Abnormal': 'abnormal'})
+        prompt_text = get_prompt_text(label_map)
+        """
+        if 'Normal' in vid_kind.values():
+            self.label_map['Normal'] = 'normal'
+        elif 'A' in vid_kind.values():
+            self.label_map['A'] = 'a'
+        for val in vid_kind.values():
+            if val not in self.label_map:
+                self.label_map[val] = val.lower()
+        self.num_class = len(self.label_map)
+
 
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_sultani_main(
+        fit_dict = fit_VadClip(
+            trainer=self,
+            X_test=X_test,
+            # y_test=y_test,
             X_train=X,
             y_train=y,
             model=self.model,
@@ -140,11 +164,12 @@ class VadClip:
             batch_size=self.batch_size,
             device=self.device,
             verbose=self.verbose,
-            vid_info=vid_info,
-            clip_num=vid_source_clips_num,
-            vid_kind=vid_kind,
-            crops_num=crops_num,
+            clip_num=vid_source_clips_num, crops_num=crops_num, vid_info=vid_info, vid_kind=vid_kind, X_test_extra=X_test_extra
         )
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],  #
+                                         fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
+                                         fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'], fit_dict['X_test_extra'])
+
         self.fitted = True
 
         training_time = time.time() - start_time
@@ -193,9 +218,6 @@ class VadClip:
         test_dataset = VideoDataset(X, vid_kind_expand, clip_num_expand, self.visual_length, is_test=True)
         test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-        gt_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy'
-        gt = np.load(gt_path)  # [696279*16]
-
         pre = 0
         gt_list = []
         total = 0
@@ -224,111 +246,25 @@ class VadClip:
                         lengths[j] = length
                 lengths = lengths.to(int)  # 这么做是为了分段，0为有效帧，1为padding（无效部分
                 padding_mask = get_batch_mask(lengths, maxlen).to(self.device)
-                _, logits1, logits2 = self.model(visual, padding_mask, prompt_text, lengths)
+                _, logits1, logits2 = self.model(visual, padding_mask, get_prompt_text(self.label_map), lengths)
                 logits1 = logits1.reshape(logits1.shape[0] * logits1.shape[1], logits1.shape[2])
                 prob1 = torch.sigmoid(logits1[0:len_cur].squeeze(-1))
                 if i == 0:
                     ap1 = prob1
                 else:
                     ap1 = torch.cat([ap1, prob1], dim=0)
-                    if i % 10 == 9:
-                        # 制作gt
-                        gt_list.append(np.tile(gt[pre:pre + len_cur * 16], 10))
-                        pre += len_cur * 16  # 之前没乘16
-                        total += len_cur * 16 * 10
+                    # if i % 10 == 9:
+                    #     # 制作gt
+                    #     gt_list.append(np.tile(gt[pre:pre + len_cur * 16], 10))
+                    #     pre += len_cur * 16  # 之前没乘16
+                    #     total += len_cur * 16 * 10
             scores = ap1.squeeze().cpu().numpy()  # [696270]
-            ap1 = ap1.cpu().numpy()  # 696340 = 69634 * 16 = 1114144
 
-            ap1 = ap1.tolist()
-            gt = np.concatenate(gt_list)
-            ROC1 = roc_auc_score(gt, np.repeat(ap1, 16))  # 每个元素seg成16倍，所以gt才不准。
-            AP1 = average_precision_score(gt, np.repeat(ap1, 16))  # bug:gt没有重复成十份 [1114144, 11141440]
-            print(f"测试集 AUCROC: {ROC1:.4f}, AUCPR: {AP1:.4f}")
         # 确保返回一维数组
         if scores.ndim == 0:
             scores = np.array([scores])
         return scores
 
-    # def predict_proba(self, X, vid_kind, vid_source_clips_num,crops_num):
-    #     if not self.fitted:
-    #         raise ValueError("模型尚未训练，请先调用fit()方法")
-    #
-    #     self.model.eval()
-    #     # 手搓测试集
-    #     ncrop = crops_num
-    #     seg = self.visual_length
-    #     feature = self.input_dim
-    #     for i in range(len(vid_source_clips_num)):
-    #         print(f'{i},{vid_source_clips_num[i]}')
-    #       # 注意上界
-    #     def split_by_seg_list(X, seg_list):
-    #         X = X.reshape(-1, ncrop, feature) # 【seg, crop:10, 2048]
-    #         segments = []
-    #         start = 0
-    #         for seg_len in seg_list:
-    #             end = start + seg_len
-    #             for i in range(ncrop):
-    #                 segment = X[start:end,i]  # shape: [1, seg_len, 2048]
-    #                 segments.append(segment)
-    #             start = end
-    #         return segments
-    #
-    #     X = split_by_seg_list(X, vid_source_clips_num.values()) # (2900, seg, 2048)
-    #     vid_kind_expand = [vid_kind[i] for i in range(len(vid_kind)) for _ in range(ncrop)]  # 包含str标签
-    #     clip_num_expand = [vid_source_clips_num[i] for i in range(len(vid_source_clips_num)) for _ in range(ncrop)]
-    #     assert len(X) == len(vid_kind_expand) and len(X) == len(clip_num_expand)
-    #     test_dataset = VideoDataset(X, vid_kind_expand, clip_num_expand, self.visual_length, is_test=True)
-    #     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    #
-    #     gt_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy'
-    #     gt = np.load(gt_path)  # [696279*16]
-    #
-    #     pre = 0
-    #     gt_list = []
-    #     total = 0
-    #     with torch.no_grad():
-    #         for i, item in tqdm(enumerate(test_loader), total=len(test_loader)):
-    #             visual = item[0].squeeze(0)
-    #             length = item[2]
-    #
-    #             length = int(length)  # bug:len_cur为96时，lengths输出为[32,32,32,32]
-    #             len_cur = length
-    #             maxlen = self.visual_length
-    #             if len_cur < maxlen:
-    #                 visual = visual.unsqueeze(0)  # 这段啥意思？
-    #             visual = visual.to(self.device)
-    #             lengths = torch.zeros(int(length / maxlen) + 1)
-    #             for j in range(int(length / maxlen) + 1):
-    #                 if j == 0 and length < maxlen:
-    #                     lengths[j] = length
-    #                 elif j == 0 and length > maxlen:
-    #                     lengths[j] = maxlen
-    #                     length -= maxlen
-    #                 elif length > maxlen:
-    #                     lengths[j] = maxlen
-    #                     length -= maxlen
-    #                 else:
-    #                     lengths[j] = length
-    #             lengths = lengths.to(dtype=torch.int)
-    #             padding_mask = get_batch_mask(lengths, maxlen).to(self.device)
-    #             # if len(visual.shape)==2:  # 保证输入为3维
-    #             #     visual = visual.unsqueeze(0)
-    #             _, logits1, logits2 = self.model(visual, padding_mask, prompt_text, lengths)
-    #             logits1 = logits1.reshape(logits1.shape[0] * logits1.shape[1], logits1.shape[2])
-    #             prob1 = torch.sigmoid(logits1[0:len_cur].squeeze(-1))
-    #             # outputs = self.model(X_tensor)
-    #             if i == 0:
-    #                 ap1 = prob1
-    #                 # ap3 = prob3
-    #             else:
-    #                 ap1 = torch.cat([ap1, prob1], dim=0)
-    #     scores = ap1.squeeze().cpu().numpy()  # [696270]
-    #
-    #     # 确保返回一维数组
-    #     if scores.ndim == 0:
-    #         scores = np.array([scores])
-    #
-    #     return scores
     def predict(self, X, vid_kind, vid_source_clips_num, crops_num, threshold=0.5):
         """
         预测异常标签
