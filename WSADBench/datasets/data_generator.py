@@ -245,8 +245,8 @@ class DataGenerator:
             contam_ratio=1.00,
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
-            seg_num=None,
-            pretrain_model=None,
+            # seg_num=None,
+            # pretrain_model=None,
     ):
         """
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
@@ -290,15 +290,19 @@ class DataGenerator:
                 ds_config = self.configs[kind][real_ds_name]
                 ds_config["working_dir"] = self.wd
                 ds_config["seed"] = self.seed
-                ds_config['pretrain_model'] = pretrain_model
-                data_manager = ManagerClass(ds_config)
-                ds_param = self.dataset.split(".")[1:]
-                _params = {"num_segments": seg_num}
+
+
+                ds_param = self.dataset.split(".")[1:]  # .s32.mi3d
+                _params = {}
                 for param in ds_param:
                     if param[0] == 's' and param[1:].isdigit():
                         _params["num_segments"] = int(param[1:])
                     if param[0] == 'l' and param[1:].isdigit():
                         _params["limit"] = int(param[1:])
+                    if param[0] == 'm' and param[1:].isalpha():
+                        ds_config['pretrain_model'] = param[1:]
+
+                data_manager = ManagerClass(ds_config)
                 data = data_manager.load_data(**_params)
 
             if data is None:

@@ -81,8 +81,6 @@ class ExperimentRunner:
         gpu_list=None,
         DEBUG=False,
         NO_RESUME=False,
-        seg_num=None,
-        pretrain_model = None,
     ):
         """
         初始化运行器
@@ -148,8 +146,6 @@ class ExperimentRunner:
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "use_0"
-        self.seg_num = seg_num if seg_num is not None else [32, 200]
-        self.pretrain_model = pretrain_model if pretrain_model is not None else ['i3d', 'mvit', 'sf']
 
         # 获取数据集列表
         if datasets is None:
@@ -174,8 +170,6 @@ class ExperimentRunner:
         logger.info(f"ELN设置: {self.eln_list}")
         logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"Seeds: {self.seed_list}")
-        logger.info(f'seg_num: {self.seg_num}')
-        logger.info(f'pretrain_model: {self.pretrain_model}')
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
         """加载模型参数配置"""
@@ -418,8 +412,20 @@ class ExperimentRunner:
 
     def run_experiments(self):
         """运行所有实验"""
+        if self.data_type == 'video':
+            try:
+                vid_info = self.datasets[-1]  # seg_32_200_pm_i3d_mvit
+                self.datasets = self.datasets[:-1]
+                seg_list = [seg for seg in vid_info.split('pm')[0].split('_')[1:] if seg]  # 过滤空字符串
+                pm_list = [pm for pm in vid_info.split('pm')[1].split('_')[1:] if pm]  # 过滤空字符串
+                # 对数据集做单个的product
+                self.datasets = [f'{ds}.s{seg}.m{pm}' for ds in self.datasets for seg in seg_list for pm in pm_list]
+            except Exception as e:
+                logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
+                raise e
+
         # 生成实验参数组合
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.target_for_unlabeled, self.seed_list, self.seg_num, self.pretrain_model))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.target_for_unlabeled, self.seed_list))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -685,7 +691,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,target_for_unlabeled, seed, seg_num, pretrain_model = params
+    model_name, dataset_name, rla,eln,target_for_unlabeled, seed = params
 
     # 设置GPU环境
     if gpu_id is not None:
@@ -706,7 +712,6 @@ def run_single_experiment_with_gpu(params_with_config):
         data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
         data_generator.seed = seed
         data_generator.dataset = dataset_name
-
         # 生成数据
         data = data_generator.generator(
             la=rla,
@@ -714,8 +719,6 @@ def run_single_experiment_with_gpu(params_with_config):
             target_for_unlabeled=target_for_unlabeled,
             at_least_one_labeled=True,
             shortage_mode="ignore",
-            seg_num = seg_num,
-            pretrain_model = pretrain_model,
         )
 
         # 检查数据有效性
@@ -826,8 +829,6 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.sum(data["y_test"]),
             "error": "",
             "data_type": data_type,
-            "seg_num": seg_num,
-            'pretrain_model': pretrain_model,
         }
 
         logger.info(
@@ -862,8 +863,6 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.nan,
             "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
-            "seg_num": seg_num,
-            'pretrain_model': pretrain_model,
         }
 
 
@@ -930,21 +929,6 @@ def main():
         type=int,
         default=list(range(1, 11)),
         help="随机种子列表 (默认: 1 2 3 4 5 6 7 8 9 10)",
-    )
-
-    parser.add_argument(
-        "--seg_num",  # seg个数
-        nargs="+",
-        type=int,
-        default=[32, 200],
-        help="随机种子列表 (默认: 32, 200)",
-    )
-    parser.add_argument(
-        "--pretrain_model",  # seg个数
-        nargs="+",
-        type=str,
-        default=['i3d', 'mvit'],
-        help="随机种子列表 (默认: 'i3d', 'mvit', 'sf')",
     )
 
     parser.add_argument(
@@ -1026,8 +1010,6 @@ def main():
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
         NO_RESUME=args.NO_RESUME,
-        seg_num = args.seg_num,
-        pretrain_model = args.pretrain_model,
     )
 
     # 运行实验

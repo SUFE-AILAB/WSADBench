@@ -28,8 +28,8 @@ class ARNet:
             input_dim:int=2048,
             dropout: float = 0.7,
             model_name: str =None,
-            n_feature: int=2048,
-            feature_size:int=2048,
+            # n_feature: int=2048,
+            # feature_size:int=2048,
             # 训练参数
             epochs: int = 30,
             batch_size: int = 30,
@@ -69,8 +69,8 @@ class ARNet:
         self.input_dim = input_dim
         self.dropout = dropout
         self.model_name = model_name
-        self.n_feature = n_feature
-        self.feature_size = feature_size
+        # self.n_feature = n_feature
+        # self.feature_size = feature_size
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
@@ -105,9 +105,9 @@ class ARNet:
             # 创建模型
             
             if self.model_name == "model_lstm":
-                self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=self.seq_len).to(self.device)  
+                self.model = model_generater(model_name=self.model_name,feature_size=self.input_dim,seq_len=self.seq_len).to(self.device)
             else:
-                self.model = model_generater(model_name=self.model_name, feature_size=self.feature_size).to(self.device)
+                self.model = model_generater(model_name=self.model_name, feature_size=self.input_dim).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adam(
@@ -143,6 +143,7 @@ class ARNet:
 
         # 数据预处理
         X = self._preprocess_data(X)   #[507180,2048]  # 可能需要根据实际数据调整维度
+        self.input_dim = X.shape[-1]
 
         # 初始化模型
         self._init_model()
@@ -281,8 +282,7 @@ class ARNet:
             "seed": self.seed,
             "input_dim": self.input_dim,
             "model_name":self.model_name,
-            "n_feature":self.n_feature,
-            "feature_size":self.feature_size,
+            "input_dim":self.input_dim,
             "dropout": self.dropout,
             "epochs": self.epochs,
             "batch_size": self.batch_size,
