@@ -59,6 +59,7 @@ class ModelRegistry:
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
+            "PUMA":"WSADBench.baseline.PUMA.run.PUMA"
         }
         return default_model_map.get(model_name, None)
 
@@ -99,8 +100,8 @@ class ExperimentRunner:
         """
         self.DEBUG = DEBUG
         self.NO_RESUME = NO_RESUME
-        if data_type not in ["video", "tabular_classical", "tabular_CV_by_ResNet18", "tabular_CV_by_ViT","tabular_NLP_by_BERT", "tabular_NLP_by_RoBERTa"]:
-            raise ValueError(f"data_type must have 'video' or 'tabular' in it, got '{data_type}'")
+        if data_type not in ["video", "tabular_classical", "tabular_CV_by_ResNet18", "tabular_CV_by_ViT","tabular_NLP_by_BERT", "tabular_NLP_by_RoBERTa","classical_bags_inexact"]:
+            raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
 
         self.models = models
         self.data_type = data_type
@@ -113,6 +114,8 @@ class ExperimentRunner:
         default_output_dir = f"results/{data_type}"
         if "tabular" in data_type:
             default_config_path = f"WSADBench/model_configs/tabular"
+        elif "bags" in data_type:
+            default_config_path = f"WSADBench/model_configs/tabular_bags_inexact"
         else:
             default_config_path = f"WSADBench/model_configs/{data_type}"
 
@@ -145,7 +148,7 @@ class ExperimentRunner:
         self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
-        self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "use_0"
+        self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
 
         # 获取数据集列表
         if datasets is None:
@@ -295,6 +298,9 @@ class ExperimentRunner:
         elif self.data_type == "tabular_NLP_by_RoBERTa":  # tabular
             datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
             logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
+        elif self.data_type == "classical_bags_inexact":    # tabular -> video:inexact
+            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact"]
+            logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")    
         return datasets
 
     @staticmethod
@@ -348,7 +354,7 @@ class ExperimentRunner:
     @staticmethod
     def _process_video_scores(scores, video_shape, data):
         """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
-        _clips_num, _crops_num = video_shape
+        _clips_num, _crops_num = video_shape            #tabular_inexact: [n_bags,n_samples,n_features]
 
         # 平均每个crop, 获得每个clip的分数
         scores = scores.reshape(_clips_num, _crops_num)
@@ -374,7 +380,43 @@ class ExperimentRunner:
         frame_truth = np.concatenate(frame_truth, axis=0)
 
         return frame_scores, frame_truth
+    @staticmethod
+    def _process_tabular_data(data):
+        """处理tabular_inexact数据的特殊逻辑"""
+        # 训练数据 reshape
+        n_bags, n_samples, _dim = data["X_train"].shape
+        data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
+        data["y_train"] = data["y_train"].repeat(n_samples)
 
+        # 测试数据 reshape
+        n_bags, n_samples, _dim = data["X_test"].shape
+        data["X_test"] = data["X_test"].reshape(n_bags * n_samples, _dim)
+
+        return data, (n_bags, n_samples)
+
+    @staticmethod
+    def _process_tabular_scores(scores, data_shape, data):
+        """处理tabular_inexact分数的特殊逻辑：从bag级别还原到样本级别"""
+        n_bags, n_samples = data_shape  # 取出 n_bags 和 n_samples
+        
+        # 平均每个样本，获得每个袋的分数
+        scores = scores.reshape(n_bags, n_samples)
+        scores = np.mean(scores, axis=1)
+
+        # 还原 bag 级别的 score 为样本级别的 score
+        y_test_idx = data["y_test_idx"]
+        y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+
+
+        sample_truth = y_test_gt
+        sample_scores = scores.repeat(n_samples)
+        #对齐长度
+        common_length = min(len(sample_truth), len(sample_scores))
+        sample_scores = sample_scores[:common_length]
+        sample_truth = sample_truth[:common_length]
+
+        return sample_scores, sample_truth
+    
     def _save_single_result(self, result):
         """保存单个实验结果"""
         if result is None:
@@ -723,6 +765,8 @@ def run_single_experiment_with_gpu(params_with_config):
         data_shape = None
         if data_type == "video":
             data, data_shape = ExperimentRunner._process_video_data(data)
+        elif "inexact" in data_type:
+            data, data_shape = ExperimentRunner._process_tabular_data(data)   # -> tabular_inexact
 
         # 训练时间
         start_time = time.time()
@@ -796,6 +840,9 @@ def run_single_experiment_with_gpu(params_with_config):
         if data_type == "video":
             frame_scores, frame_truth = ExperimentRunner._process_video_scores(scores, data_shape, data)
             metrics = utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
+        elif "inexact" in data_type:  # tabular_inexact
+            sample_scores, sample_truth = ExperimentRunner._process_tabular_scores(scores, data_shape, data)
+            metrics = utils.metric(y_true=sample_truth, y_score=sample_scores, pos_label=1)
         else:  # tabular
             metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
 
@@ -868,7 +915,7 @@ def main():
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
     # 必需参数
-    parser.add_argument("--data_type", choices=["video", "tabular_classical","tabular_CV_by_ResNet18","tabular_CV_by_ViT","tabular_NLP_by_BERT","tabular_NLP_by_RoBERTa"], required=True, help="数据类型：video 或 tabular")
+    parser.add_argument("--data_type", choices=["video", "tabular_classical","tabular_CV_by_ResNet18","tabular_CV_by_ViT","tabular_NLP_by_BERT","tabular_NLP_by_RoBERTa","classical_bags_inexact"], required=True, help="数据类型：video 或 tabular")
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
@@ -906,7 +953,7 @@ def main():
         nargs="+",
         type=str,
         choices=["fill_unlabel_0","keep_label", "delete_sample"],
-        default="fill_unlabel_0",
+        default=["fill_unlabel_0"],
         help="未标注数据的目标处理方式 (默认: fill_unlabel_0, 可选: fill_unlabel_0, keep_label,delete_sample...待补充)",
     )
 
