@@ -316,7 +316,8 @@ class ZhongGCNAD:
 
     def _train_gcn(self, train_dataset: CustomDataset, variances: np.ndarray, epochs: int):
         """内部函数：训练GCN标签清洁器"""
-        self.gcn_model = NoiseFilter(nfeat=self.gcn_feat_dim, dropout_rate=self.dropout).to(self.device)
+        if self.gcn_model is None:
+            self.gcn_model = NoiseFilter(nfeat=self.gcn_feat_dim, dropout_rate=self.dropout).to(self.device)
         self.gcn_model.train()
 
         optimizer = torch.optim.SGD(
@@ -390,7 +391,7 @@ class ZhongGCNAD:
             vid_info (np.ndarray): 视频ID信息，形状为 (total_rows,).
             crops_num (int): 每个clip的crop数量，必须提供以便正确重塑数据.
         """
-        assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."
+        assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."  # 没有类别标签
         clips_num = X.shape[0] // crops_num
         
         # 重塑X并计算每个clip的平均特征

@@ -6,6 +6,7 @@ MGFN方法训练逻辑
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import time
+from common_utils.baseline_utils import _process_video_scores, get_gt
 
 from tqdm import tqdm
 
@@ -14,9 +15,9 @@ import numpy as np
 import torch
 torch.set_default_tensor_type('torch.FloatTensor')
 from torch.nn import MSELoss
-from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
-
-
+# from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
+from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
+logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='rtfm')
 
 
 def sparsity(arr,  lamda2):
@@ -122,9 +123,10 @@ def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_i
     # np.save("frame_label/xd_frame_gt.npy", frame_truth)
 
     return frame_scores, frame_truth
+
 def fit(model, optimizer, epochs, device, X_test, trainer,
                 verbose=True, normal_loader=None, anomaly_loader=None):
-    logging.info('start train ...')
+    logger.info('start train ...')
     model.train()
 
     train_history = {
@@ -142,9 +144,6 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
     best_epoch_v2 = -1
     best_auc_v2 = 0.0
     best_ap_v2 = 0
-    gt_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy'
-    gt = np.load(gt_path)
-    gt = np.repeat(gt, 10)
 
 
     for epoch in range(epochs):
@@ -191,19 +190,22 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
             batch_count += 1
 
             if verbose and batch_idx % 10 == 0:
-                logging.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
+                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
 
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
+        if trainer.use_scheduler:
+            trainer.scheduler.step()
         # 测试一次
-
+        print(f'epoch:{ epoch}, lr:{ optimizer.param_groups[0]["lr"]:.6f}')
         trainer.fitted = True
         trainer.model.eval()
-        if X_test is not None:
+        if X_test is not None and trainer.is_test:
             with torch.no_grad():
                 scores = trainer.predict_proba(X_test)  # 得分696270
                 prob = np.repeat(scores, 16)
-                test_auc_v2 = roc_auc_score(gt, prob)
+                gt = get_gt(len(prob))
+                test_auc_v2 = roc_auc_score(gt, prob)  # prob成11141440了。。
                 test_ap_v2 = average_precision_score(gt, prob)
 
                 frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt, y_test_gt_idx,
@@ -218,8 +220,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                logging.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logging.info(
+                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                logger.info(
                     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
 
         # print("train finish")
@@ -234,93 +236,3 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
 
     return train_history
 
-
-def process_feat(feat, length):
-    new_feat = np.zeros((length, feat.shape[1])).astype(np.float32)
-
-    r = np.linspace(0, len(feat), length + 1, dtype=np.int64)
-    for i in range(length):
-        if r[i] != r[i + 1]:
-            new_feat[i, :] = np.mean(feat[r[i]:r[i + 1], :], 0)
-        else:
-            new_feat[i, :] = feat[r[i], :]
-    return new_feat
-# 5. 自定义 Dataset
-class VideoDataset(Dataset):
-    def __init__(self, features, clip_num, seg, is_test=False):
-        self.is_test = is_test
-        self.seg = seg
-        self.features = features
-        # self.vid_kind = vid_kind  # 保留为 str list
-        # self.clip_num = clip_num # 保留为 int list
-
-    def __len__(self):
-        return len(self.features)
-
-    def __getitem__(self, idx):
-        if self.is_test:
-            # feat, _ = process_split(self.features[idx], self.seg)
-            return self.features[idx]  # 直接返回
-        else:
-            divided_features = []
-            for feature in self.features[idx]:
-                feature = process_feat(feature, 32)  # divide a video into 32 segments
-                divided_features.append(feature)
-            divided_features = np.array(divided_features, dtype=np.float32)
-
-            return divided_features
-
-def fit_main(X_train, y_train, model, optimizer, epochs, batch_size, device,X_test,trainer,
-                      verbose=True, clip_num=None,  crops_num=None, ):
-    model.train()
-    ncrop = crops_num
-    seg = trainer.seg # 32表示32seg
-    feature = model.input_dim
-
-    def split_by_seg_list(X, seg_list, feature):
-        X = X.reshape(-1, ncrop, feature)  # 【seg, crop:10, 2048]
-        segments = []
-        start = 0
-        for seg_len in seg_list:
-            end = start + seg_len
-            for i in range(ncrop):
-                segment = X[start:end, i]  # shape: [1, seg_len, 2048]
-                segments.append(segment)
-            start = end
-        return segments
-    clip_num = [32 for i in range(len(clip_num))]  # 32 seg 版
-    X_train = split_by_seg_list(X_train, clip_num, feature)  # (16100, seg, 2048)
-    y_train = split_by_seg_list(y_train, clip_num, 1)  # 16100个(, seg, 1)(mask)
-    # for item in y_train:
-    #     print(item.shape)
-    y_train = [int(item[0, 0]) for item in y_train]  # 16100个0、1标签list
-
-    def group_into_crops(X_normal_videos, crop_size=10):
-        grouped = []
-        for i in range(0, len(X_normal_videos), crop_size):
-            batch = X_normal_videos[i:i + crop_size]
-            if len(batch) == crop_size:
-                crop = np.stack(batch, axis=0)  # shape: [10, 32, 2048]
-                grouped.append(crop)
-        return grouped
-
-    X_normal_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 0])
-    X_anomaly_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 1])
-    # y_train = np.concatenate(np.zeros(len(X_normal_videos)), np.ones(len(X_anomaly_videos)), axis=0)
-    # vid_kind_expand = [vid_kind[i] for i in range(len(vid_kind)) for _ in range(ncrop)]  # 包含str标签，并复制
-    clip_num_expand = [min(seg, clip_num[i]) for i in range(len(clip_num)) for _ in range(ncrop)]  # 注意上界
-    # 4. 对应扩展 vid_kind 和 clip_num：每个视频被切成了10段
-
-    normal_clip_num = [clip_num_expand[i] for i in range(len(y_train)) if y_train[i] == 0]
-    abnormal_clip_num = [clip_num_expand[i] for i in range(len(y_train)) if y_train[i] == 1]
-
-    # 6. 构建 Dataset 和 DataLoader
-    normal_dataset = VideoDataset(X_normal_videos,  normal_clip_num, seg)
-    anomaly_dataset = VideoDataset(X_anomaly_videos,  abnormal_clip_num, seg)
-
-    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=1)
-    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=1)
-
-    # 调用主训练函数
-    return fit(model, optimizer, epochs, device, X_test,  trainer,
-                verbose, normal_loader,anomaly_loader)

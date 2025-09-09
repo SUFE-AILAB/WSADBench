@@ -15,8 +15,9 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.Sultani.model import SultaniLearner
-from WSADBench.baseline.Sultani.fit import fit_sultani_main
-
+# from WSADBench.baseline.Sultani.fit import fit_sultani_main
+from WSADBench.baseline.Sultani.fit import fit_sultani as fit_main
+from common_utils.baseline_utils import fit_utils
 
 class Sultani:
     """
@@ -45,6 +46,7 @@ class Sultani:
         use_scheduler: bool = True,
         scheduler_milestones: List[int] = None,
         verbose: bool = True,
+        is_test: bool = False,
     ):
         """
         初始化Sultani模型
@@ -78,6 +80,7 @@ class Sultani:
         self.use_scheduler = use_scheduler
         self.scheduler_milestones = scheduler_milestones or [25, 50]
         self.verbose = verbose
+        self.is_test = is_test
 
         # 内部状态
         self.model = None
@@ -114,7 +117,7 @@ class Sultani:
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y, X_test=None, y_test=None):
+    def fit(self, X, y, X_test=None, y_test=None,vid_source_clips_num=None, crops_num=None):
         """
         训练Sultani模型
 
@@ -142,18 +145,21 @@ class Sultani:
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_sultani_main(
-            X_train=X,
-            y_train=y,
-            model=self.model,
-            optimizer=self.optimizer,
-            epochs=self.epochs,
-            batch_size=self.batch_size,
-            device=self.device,
-            sparsity_weight=self.sparsity_weight,
-            smoothness_weight=self.smoothness_weight,
-            verbose=self.verbose,
-        )
+        fit_dict = fit_utils(trainer=self,
+                             X_test=X_test,
+                             # y_test=y_test,
+                             X_train=X,
+                             y_train=y,
+                             model=self.model,
+                             optimizer=self.optimizer,
+                             epochs=self.epochs,
+                             batch_size=self.batch_size,
+                             device=self.device,
+                             verbose=self.verbose,
+                             clip_num=vid_source_clips_num, crops_num=crops_num)
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
+                                         fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
+                                         fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
 
         self.fitted = True
 

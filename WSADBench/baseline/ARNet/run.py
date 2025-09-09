@@ -10,7 +10,9 @@ from tqdm import tqdm
 from WSADBench.myutils import Utils
 from WSADBench.baseline.ARNet.model import model_generater
 from WSADBench.baseline.ARNet.model import Filter_Module,CAS_Module,BaS_Net
-from WSADBench.baseline.ARNet.fit import fit_ARNet_main
+# from WSADBench.baseline.ARNet.fit import fit_ARNet_main
+from WSADBench.baseline.ARNet.fit import fit_ARNet as fit_main
+from common_utils.baseline_utils import fit_utils
 
 class ARNet:
 
@@ -26,8 +28,8 @@ class ARNet:
             input_dim:int=2048,
             dropout: float = 0.7,
             model_name: str =None,
-            n_feature: int=2048,
-            feature_size:int=2048,
+            # n_feature: int=2048,
+            # feature_size:int=2048,
             # 训练参数
             epochs: int = 30,
             batch_size: int = 30,
@@ -67,8 +69,8 @@ class ARNet:
         self.input_dim = input_dim
         self.dropout = dropout
         self.model_name = model_name
-        self.n_feature = n_feature
-        self.feature_size = feature_size
+        # self.n_feature = n_feature
+        # self.feature_size = feature_size
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
@@ -103,9 +105,9 @@ class ARNet:
             # 创建模型
             
             if self.model_name == "model_lstm":
-                self.model = model_generater(model_name=self.model_name,feature_size=self.feature_size,seq_len=self.seq_len).to(self.device)  
+                self.model = model_generater(model_name=self.model_name,feature_size=self.input_dim,seq_len=self.seq_len).to(self.device)
             else:
-                self.model = model_generater(model_name=self.model_name, feature_size=self.feature_size).to(self.device)
+                self.model = model_generater(model_name=self.model_name, feature_size=self.input_dim).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adam(
@@ -117,7 +119,7 @@ class ARNet:
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y,X_test=None, y_test=None):
+    def fit(self, X, y,X_test=None, y_test=None, vid_source_clips_num=None, crops_num=None):
         """
         训练ARNet模型
 
@@ -141,26 +143,36 @@ class ARNet:
 
         # 数据预处理
         X = self._preprocess_data(X)   #[507180,2048]  # 可能需要根据实际数据调整维度
+        self.input_dim = X.shape[-1]
 
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_ARNet_main(
+        """
+        X_train, y_train, model, optimizer, epochs, batch_size, device,X_test,trainer,
+                      verbose=True, clip_num=None,  crops_num=None,
+        """
+        fit_dict =  fit_utils(
             X_train=X,
             y_train=y,
             model=self.model,
-            model_name=self.model_name,
-            # seq_len=self.seq_len,  # 如果是LSTM模型，需要传入序列长度
-            segments_per_video=self.segments_per_video,
+            trainer=self,
+
+            X_test=None,
+            # segments_per_video=self.segments_per_video,
             optimizer=self.optimizer,
             epochs=self.epochs,
             batch_size=self.batch_size,
             device=self.device,
-            k=self.k,  # k值
-            DMIL_weight=self.DMIL_weight,
-            Center_weight=self.Center_weight,
+            clip_num=vid_source_clips_num, crops_num=crops_num,
+            # k=self.k,  # k值
+            # DMIL_weight=self.DMIL_weight,
+            # Center_weight=self.Center_weight,
             verbose=self.verbose,
         )
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
+                                         fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
+                                         fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
 
         self.fitted = True
 
@@ -198,13 +210,21 @@ class ARNet:
         X_tensor = torch.FloatTensor(X)   #[696270,2048]
         all_scores = []
         with torch.no_grad():
-            for start in tqdm(range(0, len(X), self.batch_size)):
-                end = min(start + self.batch_size, len(X))
+            batch_size = self.batch_size*10
+            for start in tqdm(range(0, len(X), batch_size)):  # ncrop？
+                end = min(start + batch_size, len(X))
                 X_tensor_batch = X_tensor[start:end].to(self.device)  # [B, 2048]
                 _, y_pred = self.model(X_tensor_batch)   #[200,10,1] ,最后一个不是 ;seq_len 为lstm添加
                 y_score = y_pred.reshape(y_pred.shape[0]*y_pred.shape[1], -1)  # [2000, 1]  #展平
                 score = y_score.squeeze().cpu().numpy()
-                all_scores.append(score)  #合并
+
+                # Ensure score is always 1-dimensional
+                if score.ndim == 0:
+                    score = np.array([score])
+                elif score.ndim > 1:
+                    score = score.flatten()
+
+                all_scores.append(score)  # 合并
         # 合并所有 batch 结果
         scores = np.concatenate(all_scores, axis=0)
         # 确保返回一维数组
@@ -262,8 +282,7 @@ class ARNet:
             "seed": self.seed,
             "input_dim": self.input_dim,
             "model_name":self.model_name,
-            "n_feature":self.n_feature,
-            "feature_size":self.feature_size,
+            "input_dim":self.input_dim,
             "dropout": self.dropout,
             "epochs": self.epochs,
             "batch_size": self.batch_size,

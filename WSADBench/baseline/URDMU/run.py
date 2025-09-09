@@ -11,8 +11,8 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.URDMU.model import URDMULearner
-from WSADBench.baseline.URDMU.fit import fit_main
-
+from WSADBench.baseline.URDMU.fit import fit as fit_main
+from common_utils.baseline_utils import fit_utils
 
 class URDMU:
     """
@@ -26,8 +26,6 @@ class URDMU:
         self,
 
         seed: int = 42,
-        # 模型参数
-        input_dim: int = 2048,
         dropout: float = 0.6,
         # 训练参数
         epochs: int = 5,  # 可以改
@@ -37,12 +35,14 @@ class URDMU:
         # 其他参数
         segments_per_video: int = 32,
         verbose: bool = True,
-        input_size=None, flag=None, a_nums=None, n_nums=None,
+        flag=None, a_nums=None, n_nums=None,seg=None, step=None,
+        use_scheduler= None,
+        scheduler_milestones= [33, 66],
+        is_test = None,
 
     ):
 
         self.seed = seed
-        self.input_dim = input_dim
         self.dropout = dropout
         self.epochs = epochs
         self.batch_size = batch_size
@@ -66,27 +66,34 @@ class URDMU:
         self.utils.set_seed(seed)
         self.device = self.utils.get_device(True)
 
-        #
-        self.input_size = input_size
+
         self.flag = flag
         self.a_nums= a_nums
         self.n_nums = n_nums
+        self.seg = seg
+        self.step = step
+        self.use_scheduler = use_scheduler
+        self.scheduler_milestones = scheduler_milestones
+        self.is_test = is_test
 
     def _init_model(self):
         """初始化模型"""
         if self.model is None:
             # 创建模型
-            self.model = URDMULearner(self.input_size, self.flag, self.a_nums, self.n_nums).to(self.device)
+            self.model = URDMULearner(self.input_dim, self.flag, self.a_nums, self.n_nums).to(self.device)
             # 创建优化器
             self.optimizer = optim.Adagrad(
                 self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
+            # 创建学习率调度器
+            if self.use_scheduler:
+                self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
             if self.verbose:
                 print(f"RTFM模型初始化完成")
                 print(f"设备: {self.device}")
                 print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
 
-    def fit(self, X, y, X_test=None, y_test=None):
+    def fit(self, X, y,  vid_source_clips_num=None,  X_test=None, y_test=None, crops_num=None):
         """
         训练Sultani模型
 
@@ -110,11 +117,16 @@ class URDMU:
 
         # 数据预处理
         X = self._preprocess_data(X)
-
+        # 判断input_dim
+        self.input_dim = X.shape[1]
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_main(
+
+        fit_dict = fit_utils(
+            trainer=self,
+            X_test=X_test,
+            # y_test=y_test,
             X_train=X,
             y_train=y,
             model=self.model,
@@ -123,8 +135,9 @@ class URDMU:
             batch_size=self.batch_size,
             device=self.device,
             verbose=self.verbose,
+            clip_num=vid_source_clips_num, crops_num=crops_num
         )
-
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'], fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'], fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
         self.fitted = True
 
         training_time = time.time() - start_time

@@ -454,6 +454,18 @@ class ExperimentRunner:
 
     def run_experiments(self):
         """运行所有实验"""
+        if self.data_type == 'video':
+            try:
+                vid_info = self.datasets[-1]  # seg_32_200_pm_i3d_mvit
+                self.datasets = self.datasets[:-1]
+                seg_list = [seg for seg in vid_info.split('pm')[0].split('_')[1:] if seg]  # 过滤空字符串
+                pm_list = [pm for pm in vid_info.split('pm')[1].split('_')[1:] if pm]  # 过滤空字符串
+                # 对数据集做单个的product
+                self.datasets = [f'{ds}.s{seg}.m{pm}' for ds in self.datasets for seg in seg_list for pm in pm_list]
+            except Exception as e:
+                logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
+                raise e
+
         # 生成实验参数组合
         experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.target_for_unlabeled, self.seed_list))
 
@@ -742,7 +754,6 @@ def run_single_experiment_with_gpu(params_with_config):
         data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
         data_generator.seed = seed
         data_generator.dataset = dataset_name
-
         # 生成数据
         data = data_generator.generator(
             la=rla,
@@ -797,6 +808,8 @@ def run_single_experiment_with_gpu(params_with_config):
 
         if has_param(model.fit, "X_test"):
             train_input["X_test"] = [data["X_test"],data_shape,data["y_test_idx"],data["y_test_gt"], data["y_test_gt_idx"], data["NUM_FRAMES"]]
+        if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
+            train_input["X_test_extra"] = [data.get("vid_kind_test", None),data.get("vid_source_clips_num_test", None), data_shape[1] if data_shape else None]
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -906,7 +919,7 @@ def main():
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     print(f"原始限制: soft={soft}, hard={hard}")
     # 设置为 2048（注意不能超过 hard limit，否则会报错）
-    resource.setrlimit(resource.RLIMIT_NOFILE, (2048, hard))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (4096, hard))
     # 验证修改结果
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     print(f"修改后: soft={soft}, hard={hard}")

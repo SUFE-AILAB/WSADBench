@@ -27,3 +27,47 @@ video:
       MODALITY_DIR: 'all_rgbs'
       NUM_FRAMES: 16
       SEGMENTATION_DIR: 'segmentation'
+
+  shanghaitech:
+    MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.ShanghaitechManager'
+    DATA_DIR: 'WSADBench/datasets/CV_by_I3D/shanghaitech/'
+    SPLIT_DIR: 'splits/'
+    SPLIT_FILE: {'train': 'Anomaly_Train.txt', 'test': 'Anomaly_Test.txt'}
+    LABEL_LIST: 'shanghaitech_Annotation.txt'
+    MODALITY: RGB
+    MODALITY_DIR: 'all_rgbs'
+    NUM_FRAMES: 16
+    SEGMENTATION_DIR: 'segmentation'
+
+  XD-violence:
+    MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.XDViolenceManager'
+    DATA_DIR: 'WSADBench/datasets/CV_by_I3D/XD-violence/'
+    SPLIT_DIR: 'splits/'
+    SPLIT_FILE: { 'train': 'Anomaly_train.txt', 'test': 'Anomaly_test.txt' }
+    LABEL_LIST: 'Annotation_xd.txt'
+    MODALITY: RGB
+    MODALITY_DIR: 'all_rgbs'
+    NUM_FRAMES: 16
+    SEGMENTATION_DIR: 'segmentation'
+
+  TAD:
+    MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.TADManager'
+    DATA_DIR: 'WSADBench/datasets/CV_by_I3D/TAD/'
+    SPLIT_DIR: 'splits/'
+    SPLIT_FILE: {'train': 'Anomaly_train.txt', 'test': 'Anomaly_test.txt'}
+    LABEL_LIST: 'Annotation.txt'
+    MODALITY: RGB
+    MODALITY_DIR: 'all_rgbs'
+    NUM_FRAMES: 16
+    SEGMENTATION_DIR: 'segmentation'
+
+  UCSD_Ped2:
+    MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.UCSD_Ped2Manager'
+    DATA_DIR: 'WSADBench/datasets/CV_by_I3D/UCSD_Ped2/'
+    SPLIT_DIR: 'splits/'
+    SPLIT_FILE: { 'train': 'Anomaly_Train.txt', 'test': 'Anomaly_Test.txt' }
+    LABEL_LIST: 'Annotation.txt'
+    MODALITY: RGB
+    MODALITY_DIR: 'all_rgbs'
+    NUM_FRAMES: 16
+    SEGMENTATION_DIR: 'segmentation'

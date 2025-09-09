@@ -20,12 +20,12 @@ import torch
 # currently, data generator only supports for generating the binary classification datasets
 class DataGenerator:
     def __init__(
-        self,
-        seed: int = 42,
-        dataset: str = None,
-        test_size: float = 0.3,
-        generate_duplicates=True,
-        n_samples_threshold=1000,
+            self,
+            seed: int = 42,
+            dataset: str = None,
+            test_size: float = 0.3,
+            generate_duplicates=True,
+            n_samples_threshold=1000,
     ):
         """
         :param seed: seed for reproducible results
@@ -230,22 +230,24 @@ class DataGenerator:
         return X, y
 
     def generator(
-        self,
-        X=None,
-        y=None,
-        minmax=True,
-        la=None,
-        eln=None,
-        target_for_unlabeled=None,
-        at_least_one_labeled=False,
-        realistic_synthetic_mode=None,
-        alpha: int = 5,
-        percentage: float = 0.1,
-        noise_type=None,
-        duplicate_times: int = 2,
-        contam_ratio=1.00,
-        noise_ratio: float = 0.05,
-        shortage_mode="ignore",
+            self,
+            X=None,
+            y=None,
+            minmax=True,
+            la=None,
+            eln=None,
+            target_for_unlabeled=None,
+            at_least_one_labeled=False,
+            realistic_synthetic_mode=None,
+            alpha: int = 5,
+            percentage: float = 0.1,
+            noise_type=None,
+            duplicate_times: int = 2,
+            contam_ratio=1.00,
+            noise_ratio: float = 0.05,
+            shortage_mode="ignore",
+            # seg_num=None,
+            # pretrain_model=None,
     ):
         """
         la: labeled anomalies, can be either the ratio of labeled anomalies or the number of labeled anomalies
@@ -272,13 +274,13 @@ class DataGenerator:
                     real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
                 else:
                     real_ds_name = self.dataset
-                    
+
                 if real_ds_name not in dataset_list:
                     continue
 
                 if "DATA_DIR" in self.configs[kind]:
                     data_path = (
-                        self.wd / self.configs[kind]["DATA_DIR"] / (self.dataset + self.configs[kind]["END_WITH"])
+                            self.wd / self.configs[kind]["DATA_DIR"] / (self.dataset + self.configs[kind]["END_WITH"])
                     )
                     data = np.load(data_path, allow_pickle=True)
 
@@ -292,14 +294,19 @@ class DataGenerator:
                 ds_config = self.configs[kind][real_ds_name]
                 ds_config["working_dir"] = self.wd
                 ds_config["seed"] = self.seed
-                data_manager = ManagerClass(ds_config)
-                ds_param = self.dataset.split(".")[1:]
+
+
+                ds_param = self.dataset.split(".")[1:]  # .s32.mi3d
                 _params = {}
                 for param in ds_param:
                     if param[0] == 's' and param[1:].isdigit():
                         _params["num_segments"] = int(param[1:])
                     if param[0] == 'l' and param[1:].isdigit():
                         _params["limit"] = int(param[1:])
+                    if param[0] == 'm' and param[1:].isalpha():
+                        ds_config['pretrain_model'] = param[1:]
+
+                data_manager = ManagerClass(ds_config)
                 data = data_manager.load_data(**_params)
 
             if data is None:
@@ -435,10 +442,10 @@ class DataGenerator:
                 idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
         else:
             raise NotImplementedError
-        
+
         if type(eln) == float:
             if at_least_one_labeled:
-                idx_labeled_normal= np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+                idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
             else:
                 idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
         elif type(eln) == int:
@@ -469,14 +476,14 @@ class DataGenerator:
         del idx_anomaly, idx_unlabeled_anomaly
 
         # that of labeled anomalies is 1
-        y_train[idx_labeled_anomaly] = 1 
-        #设置掩码区分出有标签和无标签样本
+        y_train[idx_labeled_anomaly] = 1
+        # 设置掩码区分出有标签和无标签样本
         mask = np.ones_like(y_train, dtype=int)
-        mask[idx_unlabeled] = 0     #无标签索引处赋值为0
+        mask[idx_unlabeled] = 0  # 无标签索引处赋值为0
 
         if target_for_unlabeled == "fill_unlabel_0":
             y_train[mask == 0] = 0  # 无标签样本的标签为0
-        elif target_for_unlabeled == "delete_sample":  #只使用有标签样本
+        elif target_for_unlabeled == "delete_sample":  # 只使用有标签样本
             X_train = X_train[mask == 1]
             y_train = y_train[mask == 1]
 

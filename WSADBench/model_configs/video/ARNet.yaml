@@ -6,8 +6,8 @@ parameters:
   # 训练参数
   dropout: 0.7
   model_name: "model_single"  # 可选值: model_single, model_mean, model_sequence, model_concatcate
-  epochs: 20
-  batch_size: 30
+  epochs: 20  # 20
+  batch_size: 3  # 有 10 crop
   lr: 0.0001
   weight_decay:  0.0005
   # 损失权重

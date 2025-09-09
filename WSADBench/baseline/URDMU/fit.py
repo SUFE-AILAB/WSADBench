@@ -2,9 +2,13 @@
 import torch.nn as nn
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Dataset
 import time
+from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
+from common_utils.baseline_utils import get_gt
 
+logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='urdmu')
+from sklearn.metrics import roc_auc_score, average_precision_score
 def norm(data):
     l2 = torch.norm(data, p=2, dim=-1, keepdim=True)
     return torch.div(data, l2)
@@ -54,8 +58,42 @@ class AD_Loss(nn.Module):
 
         return cost, loss
 
-def fit(model, optimizer, train_loader, epochs, device,
-                verbose=True):
+# @staticmethod
+def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames):
+    """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
+    _clips_num, _crops_num = video_shape
+
+    # 平均每个crop, 获得每个clip的分数
+    scores = scores.reshape(_clips_num, _crops_num)
+    scores = np.mean(scores, axis=1)
+
+    # 还原clip级别score为帧级别score
+    # y_test_idx = data["y_test_idx"]
+    # y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+    # num_clip_frames = data["NUM_FRAMES"]
+
+    frame_scores = []
+    frame_truth = []
+    for i in range(max(y_test_gt_idx) + 1):
+        select_gt = y_test_gt[y_test_gt_idx == i]
+        select_scores = scores[y_test_idx == i]
+        select_scores = select_scores.repeat(num_clip_frames)
+        common_length = min(len(select_gt), len(select_scores))
+
+        frame_scores.append(select_scores[:common_length])
+        frame_truth.append(select_gt[:common_length])
+
+    frame_scores = np.concatenate(frame_scores, axis=0)
+    frame_truth = np.concatenate(frame_truth, axis=0)
+    # frame_truth存到本地
+    # np.save("frame_label/xd_frame_gt.npy", frame_truth)
+
+    return frame_scores, frame_truth
+
+
+
+def fit(model, optimizer, epochs, device, X_test, trainer,
+                verbose=True, normal_loader=None, anomaly_loader=None):
     model.train()
 
     train_history = {
@@ -66,17 +104,26 @@ def fit(model, optimizer, train_loader, epochs, device,
     if verbose:
         print(f"开始训练URDMU模型，共{epochs}轮...")
         print(f"设备: {device}")
-    model.flag = "Train"
+
+    logger.info('start train ...')
+    X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
+    best_epoch = -1
+    best_auc = 0.0
+    best_ap = 0
+    best_epoch_v2 = -1
+    best_auc_v2 = 0.0
+    best_ap_v2 = 0
+    cur_step = 0
+    step_flag = False
     for epoch in range(epochs):
         epoch_start_time = time.time()
         epoch_loss = 0.0
-        batch_count = 0
-
-        for batch_idx, (normal_data, anomaly_data) in enumerate(train_loader):
+        model.flag = "Train"
+        for batch_idx, (normal_data, anomaly_data) in enumerate(zip(normal_loader, anomaly_loader)):
             optimizer.zero_grad()
 
             # 将数据移到设备
-            normal_data = normal_data.to(device)
+            normal_data = normal_data.to(device)  # [batch, 10, 32, feature]
             anomaly_data = anomaly_data.to(device)
 
             batch_size = normal_data.shape[0]
@@ -98,19 +145,45 @@ def fit(model, optimizer, train_loader, epochs, device,
             optimizer.step()
 
             epoch_loss += loss.item()
-            batch_count += 1
-
+            cur_step+=1
+            if cur_step >= trainer.step:
+                step_flag = True
+                break
             if verbose and batch_idx % 10 == 0:
-                print(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
+                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}, cur_step:{cur_step}')
 
         epoch_time = time.time() - epoch_start_time
-        avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
+        if X_test is not None and trainer.is_test:
+            trainer.fitted= True
+            with torch.no_grad():
+                scores = trainer.predict_proba(X_test)  # 得分696270
+                prob = np.repeat(scores, 16)
+                gt = get_gt(len(prob))
+                test_auc_v2 = roc_auc_score(gt, prob)  # prob成11141440了。。
+                test_ap_v2 = average_precision_score(gt, prob)
 
-        train_history['loss'].append(avg_epoch_loss)
+                frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt, y_test_gt_idx,
+                                                                  num_clip_frames)
+                test_auc = roc_auc_score(frame_truth, frame_scores)
+                test_ap = average_precision_score(frame_truth, frame_scores)
+                if best_auc < test_auc:
+                    best_epoch = epoch
+                    best_auc = test_auc
+                    best_ap = test_ap
+                if best_auc_v2 < test_auc_v2:
+                    best_epoch_v2 = epoch
+                    best_auc_v2 = test_auc_v2
+                    best_ap_v2 = test_ap_v2
+                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                logger.info(
+                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+
         train_history['epoch_time'].append(epoch_time)
 
         if verbose:  # 打印结果，只练不测。。
-            print(f'Epoch {epoch + 1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
+            print(f'Epoch {epoch + 1}/{epochs} 完成 - 平均损失: {loss.item():.6f}, 耗时: {epoch_time:.2f}s')
+        if step_flag:  # 步数退出
+            break
 
     if verbose:
         print("训练完成！")
@@ -118,47 +191,3 @@ def fit(model, optimizer, train_loader, epochs, device,
     return train_history
 
 
-def fit_main(X_train, y_train, model, optimizer, epochs, batch_size, device, verbose=True):
-    model.train()
-
-    # 分离正常和异常数据
-    normal_mask = y_train == 0
-    anomaly_mask = y_train == 1
-
-    X_normal = X_train[normal_mask]
-    X_anomaly = X_train[anomaly_mask]
-
-    if len(X_anomaly) == 0 or len(X_normal) == 0:
-        raise ValueError("训练数据中必须同时包含正常和异常样本")
-
-    normal_clips_num, anomaly_clips_num = X_normal.shape[0], X_anomaly.shape[0]
-
-    # 通过过采样确保正常样本与异常样本数量相同
-    if normal_clips_num < anomaly_clips_num:
-        # 重复正常样本直到数量与异常样本相同
-        repeat_times = (anomaly_clips_num + normal_clips_num - 1) // normal_clips_num
-        X_normal = np.tile(X_normal, (repeat_times, 1))[:anomaly_clips_num]
-    elif anomaly_clips_num < normal_clips_num:
-        # 重复异常样本直到数量与正常样本相同
-        repeat_times = (normal_clips_num + anomaly_clips_num - 1) // anomaly_clips_num
-        X_anomaly = np.tile(X_anomaly, (repeat_times, 1))[:normal_clips_num]
-
-    assert len(X_normal) == len(X_anomaly), "采样后正常样本和异常样本数量仍不匹配"
-    data_len = len(X_normal)
-
-    # 重塑数据为视频段格式
-    segments_per_video = 32
-    segments_num = data_len // segments_per_video
-
-    X_normal_videos = X_normal[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-    X_anomaly_videos = X_anomaly[:segments_num * segments_per_video].reshape(segments_num, segments_per_video, -1)
-
-    # 创建训练数据集
-    train_dataset = TensorDataset(
-        torch.FloatTensor(X_normal_videos),
-        torch.FloatTensor(X_anomaly_videos)
-    )
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
-    # 调用主训练函数
-    return fit(model, optimizer, train_loader, epochs, device, verbose)

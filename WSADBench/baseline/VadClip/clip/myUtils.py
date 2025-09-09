@@ -1,24 +1,28 @@
+# WSADBench/baseline/VadClip/clip/myUtils.py
 import numpy as np
 from tqdm import tqdm
-
-
-def read_np():
-    file_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_by_I3D/UCF_Crime/all_rgbs/Burglary/Burglary044_x264.mp4.npy'
-    # file_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_by_I3D/UCF_Crime/all_rgbs/Burglary/Burglary045_x264.mp4.npy'
-    data = np.load(file_path)
-    pass
-
-# config/logging_config.py
 import logging
 import logging.handlers
 import os
 from datetime import datetime
 
-def setup_logging(log_dir):
+
+def setup_logging(log_dir, name='exp'):
     """
-    配置日志系统
+    配置日志系统，避免重复初始化
     支持按日期滚动的文件日志和控制台输出
     """
+    # 创建专用的logger，避免影响root logger
+    logger_name = f"{name}_logger"
+    logger = logging.getLogger(logger_name)
+
+    # 如果logger已经配置过，直接返回
+    if logger.handlers:
+        return logger
+
+    # 设置日志级别
+    logger.setLevel(logging.INFO)
+
     # 创建日志目录
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -26,7 +30,7 @@ def setup_logging(log_dir):
     # 生成日志文件名
     log_filename = os.path.join(
         log_dir,
-        f"exp_{datetime.now().strftime('%Y%m')}.log"
+        f"{name}_{datetime.now().strftime('%Y%m')}.log"
     )
 
     # 创建格式化器
@@ -51,19 +55,17 @@ def setup_logging(log_dir):
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)
 
-    # 配置根日志记录器
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
+    # 添加处理器到logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
-    # 配置特定模块的日志级别
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('requests').setLevel(logging.WARNING)
-    logging.getLogger('celery').setLevel(logging.INFO)
-    return root_logger
+    # 防止日志传播到root logger
+    logger.propagate = False
 
-myLogger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs')
+    return logger
+
+
+# myLogger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs')
 
 # with open(r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs/exp_202508.log', 'r') as f:
 #     log_text = f.read()

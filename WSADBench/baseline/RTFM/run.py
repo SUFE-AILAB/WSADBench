@@ -8,7 +8,8 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.RTFM.model import rtfm
-from WSADBench.baseline.RTFM.fit import fit_main
+from common_utils.baseline_utils import fit_utils
+from WSADBench.baseline.RTFM.fit import fit as fit_main
 from tqdm import tqdm
 
 class RTFM:
@@ -30,8 +31,10 @@ class RTFM:
 
         # 其他参数
         verbose: bool = True,
-        input_dim: int = 2048,
         seg = None,
+        use_scheduler= True,
+        scheduler_milestones= [25, 50],
+        is_test=None,
     ):
         self.seed = seed  # 形成可变参数
         self.dropout = dropout  #
@@ -40,6 +43,9 @@ class RTFM:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.verbose = verbose
+        self.use_scheduler = use_scheduler
+        self.scheduler_milestones = scheduler_milestones
+        self.is_test = is_test
         # 等yaml参数
 
         # 内部状态
@@ -56,8 +62,7 @@ class RTFM:
         # 设置随机种子
         self.utils.set_seed(seed)
         self.device = self.utils.get_device(True)
-        #
-        self.input_dim = input_dim
+
         self.seg = seg
 
     def _init_model(self):
@@ -70,7 +75,8 @@ class RTFM:
             self.optimizer = optim.Adam(
                 self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
-
+            if self.use_scheduler:
+                self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
             if self.verbose:
                 print(f"RTFM模型初始化完成")
                 print(f"设备: {self.device}")
@@ -86,23 +92,24 @@ class RTFM:
             print(f"正常样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
         # 数据预处理
         X = self._preprocess_data(X)
+        self.input_dim = X.shape[1]
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_main(
-            trainer = self,
-            X_test=X_test,
-            # y_test=y_test,
-            X_train=X,
-            y_train=y,
-            model=self.model,
-            optimizer=self.optimizer,
-            epochs=self.epochs,
-            batch_size=self.batch_size,
-            device=self.device,
-            verbose=self.verbose,
-            clip_num=vid_source_clips_num,  crops_num=crops_num
-        )
+        fit_dict = fit_utils(trainer=self,
+                  X_test=X_test,
+                  # y_test=y_test,
+                  X_train=X,
+                  y_train=y,
+                  model=self.model,
+                  optimizer=self.optimizer,
+                  epochs=self.epochs,
+                  batch_size=self.batch_size,
+                  device=self.device,
+                  verbose=self.verbose,
+                  clip_num=vid_source_clips_num, crops_num=crops_num)
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'], fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'], fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
+
 
         self.fitted = True
 

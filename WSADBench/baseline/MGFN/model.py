@@ -198,7 +198,7 @@ class mgfn(nn.Module):
         depths,
         mgfn_types,  # 写死
         lokernel = 5,
-        channels,
+        input_dim = None,
         ff_repe = 4,
         dim_head = 64,
         attention_dropout = 0.,
@@ -206,7 +206,8 @@ class mgfn(nn.Module):
     ):
         super().__init__()
         init_dim, *_, last_dim = dims
-        self.to_tokens = nn.Conv1d(channels, init_dim, kernel_size=3, stride = 1, padding = 1)
+        self.input_dim  =  input_dim
+        self.to_tokens = nn.Conv1d(input_dim, init_dim, kernel_size=3, stride = 1, padding = 1)
         self.mag_ratio = mag_ratio
         mgfn_types = tuple(map(lambda t: t.lower(), mgfn_types))
 
@@ -247,8 +248,8 @@ class mgfn(nn.Module):
         k = 3
         bs, ncrops, t, c = video.size()
         x = video.view(bs * ncrops, t, c).permute(0, 2, 1)
-        x_f = x[:,:2048,:]
-        x_m = x[:,2048:,:]
+        x_f = x[:,:self.input_dim,:]
+        x_m = x[:,self.input_dim:,:]
         x_f = self.to_tokens(x_f)
         x_m = self.to_mag(x_m)
         x_f = x_f+self.mag_ratio*x_m

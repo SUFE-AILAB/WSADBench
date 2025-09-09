@@ -8,7 +8,8 @@ import time
 
 from WSADBench.myutils import Utils
 from WSADBench.baseline.MGFN.model import mgfn
-from WSADBench.baseline.MGFN.fit import fit_mgfn_main_with_crops
+from WSADBench.baseline.MGFN.fit import fit as fit_main
+from common_utils.baseline_utils import fit_utils
 from tqdm import tqdm
 
 class MGFN:
@@ -22,7 +23,6 @@ class MGFN:
         self,
         seed: int = 42,
         # 模型参数
-        input_dim: int = None,
         dropout: float = None,
         # 训练参数
         epochs: int = 5,
@@ -34,7 +34,10 @@ class MGFN:
         # 其他参数
         seg: int = 32,
         verbose: bool = True,
-        mag_ratio = None
+        mag_ratio = None,
+        use_scheduler= True,
+        scheduler_milestones= [16, 33],
+        is_test = None
     ):
         self.seed = seed  # 形成可变参数
         self.dropout = dropout  #
@@ -48,8 +51,11 @@ class MGFN:
         self.mag_ratio =mag_ratio
         self.depths=depths
         self.mgfn_types =mgfn_types
-        self.input_dim = input_dim
         self.seg = seg
+        self.use_scheduler = use_scheduler
+        self.scheduler_milestones = scheduler_milestones
+        self.is_test = is_test
+
         # 内部状态
         self.model = None
         self.optimizer = None
@@ -72,7 +78,7 @@ class MGFN:
         if self.model is None:
             #  创建模型(传参）
             self.model = mgfn(batch_size= self.batch_size, drop_p=self.dropout,mag_ratio=self.mag_ratio,
-                              depths=self.depths, mgfn_types=self.mgfn_types,channels=self.input_dim).to(self.device)
+                              depths=self.depths, mgfn_types=self.mgfn_types,input_dim=self.input_dim).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adagrad(
@@ -80,8 +86,8 @@ class MGFN:
             )
 
             # 创建学习率调度器
-            # if self.use_scheduler:
-            #     self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
+            if self.use_scheduler:
+                self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
 
             if self.verbose:
                 print(f"MGFN模型初始化完成")
@@ -98,22 +104,26 @@ class MGFN:
             print(f"正常样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
         # 数据预处理
         X = self._preprocess_data(X)
+        self.input_dim = X.shape[1]
         # 初始化模型
         self._init_model()
         # 训练模型
-        self.training_history = fit_mgfn_main_with_crops(
-            X_train=X,
-            y_train=y,
-            X_test = X_test,
-            trainer = self,  # 为了调用预测
-            model=self.model,
-            optimizer=self.optimizer,
-            epochs=self.epochs,
-            batch_size=self.batch_size,
-            device=self.device,
-            verbose=self.verbose,
-            clip_num=vid_source_clips_num, crops_num=crops_num,
-        )
+        # 训练模型
+        fit_dict = fit_utils(trainer=self,
+                             X_test=X_test,
+                             # y_test=y_test,
+                             X_train=X,
+                             y_train=y,
+                             model=self.model,
+                             optimizer=self.optimizer,
+                             epochs=self.epochs,
+                             batch_size=self.batch_size,
+                             device=self.device,
+                             verbose=self.verbose,
+                             clip_num=vid_source_clips_num, crops_num=crops_num)
+        self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
+                                         fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
+                                         fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
 
         self.fitted = True
 
