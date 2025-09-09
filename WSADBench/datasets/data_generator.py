@@ -413,10 +413,29 @@ class DataGenerator:
                 X_train, y_train = self.add_label_contamination(X_train, y_train, noise_ratio=noise_ratio)
 
             # minmax scaling1
-            if minmax and X_train.ndim <= 2:   
-                scaler = MinMaxScaler().fit(X_train)
-                X_train = scaler.transform(X_train)
-                X_test = scaler.transform(X_test)
+            if minmax:
+                if X_train.ndim <= 2:
+                    # 原逻辑
+                    scaler = MinMaxScaler().fit(X_train)
+                    X_train = scaler.transform(X_train)
+                    X_test = scaler.transform(X_test)
+
+                elif X_train.ndim == 3:
+                    # 三维包形式 [n_bags, n_samples, n_features] → 展平到二维
+                    n_bags, n_samples, n_features = X_train.shape
+
+                    # 展平
+                    X_train_flat = X_train.reshape(n_bags * n_samples, n_features)
+                    X_test_flat = X_test.reshape(X_test.shape[0] * X_test.shape[1], X_test.shape[2])
+
+                    # MinMaxScaler
+                    scaler = MinMaxScaler().fit(X_train_flat)
+                    X_train_scaled = scaler.transform(X_train_flat)
+                    X_test_scaled = scaler.transform(X_test_flat)
+
+                    # 恢复三维
+                    X_train = X_train_scaled.reshape(n_bags, n_samples, n_features)
+                    X_test = X_test_scaled.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
 
         # idx of normal samples and unlabeled/labeled anomalies
         idx_normal = np.where(y_train == 0)[0]
