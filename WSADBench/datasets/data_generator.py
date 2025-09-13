@@ -14,6 +14,7 @@ from copulas.univariate import GaussianKDE
 from WSADBench.myutils import Utils, import_class
 from pathlib import Path
 import yaml
+import torch
 
 
 # currently, data generator only supports for generating the binary classification datasets
@@ -284,6 +285,9 @@ class DataGenerator:
                     data = np.load(data_path, allow_pickle=True)
 
                     X, y = data["X"], data["y"]
+                    y_inst_gt = None
+                    if "inexact" in kind:
+                        y_inst_gt = data["y_gt"]
                     break
 
                 ManagerClass = import_class(self.configs[kind][real_ds_name]["MANAGER_CLASS"])
@@ -319,6 +323,11 @@ class DataGenerator:
                 idx_duplicate = np.random.choice(np.arange(len(y)), self.n_samples_threshold, replace=True)
                 X = X[idx_duplicate]
                 y = y[idx_duplicate]
+                if y_inst_gt is not None:
+                    n_samples = X.shape[1]
+                    y_inst_gt = np.concatenate([y_inst_gt[i*n_samples:(i+1)*n_samples] for i in idx_duplicate])
+
+                
 
             # if the dataset is too large, subsampling for considering the computational cost
             if len(y) > 10000:
@@ -327,6 +336,9 @@ class DataGenerator:
                 idx_sample = np.random.choice(np.arange(len(y)), 10000, replace=False)
                 X = X[idx_sample]
                 y = y[idx_sample]
+                if y_inst_gt is not None:
+                    n_samples = X.shape[1]
+                    y_inst_gt = np.concatenate([y_inst_gt[i*n_samples:(i+1)*n_samples] for i in idx_sample])
 
             # whether to generate realistic synthetic outliers
             if realistic_synthetic_mode is not None:
@@ -376,11 +388,20 @@ class DataGenerator:
 
             # show the statistic
             self.utils.data_description(X=X, y=y)
-
-            # spliting the current data to the training set and testing set
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=self.test_size, shuffle=True, stratify=y
+            
+            # 原始包索引
+            bag_indices = np.arange(X.shape[0]) #为tabular_inexact增加
+            # spliting the current data to the training set and testing set   目前为包形式，增加索引记录
+            X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
+                X, y, bag_indices,test_size=self.test_size, shuffle=True, stratify=y
             )
+            y_test_gt_idx = None
+            y_test_gt = None
+            if X_test.ndim ==3:
+                n_samples = X_test.shape[1]
+                #获得X_test实例级样本索引
+                y_test_gt_idx = torch.cat([torch.arange(i*n_samples, (i+1)*n_samples) for i in idx_test])
+                y_test_gt = y_inst_gt[y_test_gt_idx]
 
             # we respectively generate the duplicated anomalies for the training and testing set
             if noise_type == "duplicated_anomalies":
@@ -391,11 +412,30 @@ class DataGenerator:
             elif noise_type == "label_contamination":
                 X_train, y_train = self.add_label_contamination(X_train, y_train, noise_ratio=noise_ratio)
 
-            # minmax scaling
+            # minmax scaling1
             if minmax:
-                scaler = MinMaxScaler().fit(X_train)
-                X_train = scaler.transform(X_train)
-                X_test = scaler.transform(X_test)
+                if X_train.ndim <= 2:
+                    # 原逻辑
+                    scaler = MinMaxScaler().fit(X_train)
+                    X_train = scaler.transform(X_train)
+                    X_test = scaler.transform(X_test)
+
+                elif X_train.ndim == 3:
+                    # 三维包形式 [n_bags, n_samples, n_features] → 展平到二维
+                    n_bags, n_samples, n_features = X_train.shape
+
+                    # 展平
+                    X_train_flat = X_train.reshape(n_bags * n_samples, n_features)
+                    X_test_flat = X_test.reshape(X_test.shape[0] * X_test.shape[1], X_test.shape[2])
+
+                    # MinMaxScaler
+                    scaler = MinMaxScaler().fit(X_train_flat)
+                    X_train_scaled = scaler.transform(X_train_flat)
+                    X_test_scaled = scaler.transform(X_test_flat)
+
+                    # 恢复三维
+                    X_train = X_train_scaled.reshape(n_bags, n_samples, n_features)
+                    X_test = X_test_scaled.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
 
         # idx of normal samples and unlabeled/labeled anomalies
         idx_normal = np.where(y_train == 0)[0]
@@ -471,6 +511,9 @@ class DataGenerator:
             "y_train": y_train,
             "X_test": X_test,
             "y_test": y_test,
+            "y_test_idx":idx_test,
+            "y_test_gt_idx":y_test_gt_idx,
+            "y_test_gt":y_test_gt,
             "mask": mask
         }
 

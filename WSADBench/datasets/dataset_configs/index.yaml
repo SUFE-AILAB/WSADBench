@@ -13,6 +13,9 @@ NLP_by_BERT:
 NLP_by_RoBERTa:
   DATA_DIR: 'WSADBench/datasets/NLP_by_RoBERTa/'
   END_WITH: ".npz"
+Classical_bags_inexact:    # tabular -> video:inexact
+  DATA_DIR: 'WSADBench/datasets/Classical_bags_inexact/'
+  END_WITH: ".npz"
 video:
   UCF_Crime:
       MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.UCFCrimeManager'
