@@ -109,7 +109,15 @@ class ExperimentRunner:
         """
         self.DEBUG = DEBUG
         self.NO_RESUME = NO_RESUME
-        if data_type not in ["video", "tabular_classical", "tabular_CV_by_ResNet18", "tabular_CV_by_ViT","tabular_NLP_by_BERT", "tabular_NLP_by_RoBERTa","classical_bags_inexact"]:
+        if data_type not in [
+            "video",
+            "tabular_classical",
+            "tabular_CV_by_ResNet18",
+            "tabular_CV_by_ViT",
+            "tabular_NLP_by_BERT",
+            "tabular_NLP_by_RoBERTa",
+            "classical_bags_inexact",
+        ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
 
         self.models = models
@@ -313,9 +321,9 @@ class ExperimentRunner:
         elif self.data_type == "tabular_NLP_by_RoBERTa":  # tabular
             datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
             logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
-        elif self.data_type == "classical_bags_inexact":    # tabular -> video:inexact
+        elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
             datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact"]
-            logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")    
+            logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
         return datasets
 
     @staticmethod
@@ -369,7 +377,7 @@ class ExperimentRunner:
     @staticmethod
     def _process_video_scores(scores, video_shape, data):
         """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
-        _clips_num, _crops_num = video_shape            #tabular_inexact: [n_bags,n_samples,n_features]
+        _clips_num, _crops_num = video_shape  # tabular_inexact: [n_bags,n_samples,n_features]
 
         # 平均每个crop, 获得每个clip的分数
         scores = scores.reshape(_clips_num, _crops_num)
@@ -395,6 +403,7 @@ class ExperimentRunner:
         frame_truth = np.concatenate(frame_truth, axis=0)
 
         return frame_scores, frame_truth
+
     @staticmethod
     def _process_tabular_data(data):
         """处理tabular_inexact数据的特殊逻辑"""
@@ -413,7 +422,7 @@ class ExperimentRunner:
     def _process_tabular_scores(scores, data_shape, data):
         """处理tabular_inexact分数的特殊逻辑：从bag级别还原到样本级别"""
         n_bags, n_samples = data_shape  # 取出 n_bags 和 n_samples
-        
+
         # 平均每个样本，获得每个袋的分数
         scores = scores.reshape(n_bags, n_samples)
         scores = np.mean(scores, axis=1)
@@ -422,16 +431,15 @@ class ExperimentRunner:
         y_test_idx = data["y_test_idx"]
         y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
 
-
         sample_truth = y_test_gt
         sample_scores = scores.repeat(n_samples)
-        #对齐长度
+        # 对齐长度
         common_length = min(len(sample_truth), len(sample_scores))
         sample_scores = sample_scores[:common_length]
         sample_truth = sample_truth[:common_length]
 
         return sample_scores, sample_truth
-    
+
     def _save_single_result(self, result):
         """保存单个实验结果"""
         if result is None:
@@ -440,20 +448,36 @@ class ExperimentRunner:
         model_name = result["model"]
 
         # 生成结果文件路径
-        result_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
+        old_result_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
+        result_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
+
+        if old_result_file.exists():
+            logger.warning(
+                f"检测到旧的结果文件 {old_result_file}，请注意新结果将保存为JSONL格式的 {result_file}，建议删除旧文件以避免混淆。旧结果将被备份为.bak文件。"
+            )
+            backup_file = old_result_file.with_suffix(".csv.bak")
+            old_df = read_result_file(old_result_file)
+            old_df.to_json(result_file, orient="records", lines=True)
+            os.rename(old_result_file, backup_file)
 
         # 转换为DataFrame
         df = pd.DataFrame([result])
 
         # 如果文件已存在，追加写入；否则创建新文件
+        # if result_file.exists():
+        #     df.to_csv(result_file, mode="a", header=False, index=False)
+        # else:
+        #     df.to_csv(result_file, index=False)
         if result_file.exists():
-            df.to_csv(result_file, mode="a", header=False, index=False)
+            df.to_json(result_file, mode="a", orient="records", lines=True)
         else:
-            df.to_csv(result_file, index=False)
+            df.to_json(result_file, orient="records", lines=True)
 
         logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}")
 
-    def _load_finish_exp(self):
+    def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
+        main_keys = ["model", "dataset", "rla", "eln", "target_for_unlabeled", "seed"]
+
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
@@ -469,14 +493,14 @@ class ExperimentRunner:
 
     def run_experiments(self):
         """运行所有实验"""
-        if self.data_type == 'video':
+        if self.data_type == "video":
             try:
                 vid_info = self.datasets[-1]  # seg_32_200_pm_i3d_mvit
                 self.datasets = self.datasets[:-1]
-                seg_list = [seg for seg in vid_info.split('pm')[0].split('_')[1:] if seg]  # 过滤空字符串
-                pm_list = [pm for pm in vid_info.split('pm')[1].split('_')[1:] if pm]  # 过滤空字符串
+                seg_list = [seg for seg in vid_info.split("pm")[0].split("_")[1:] if seg]  # 过滤空字符串
+                pm_list = [pm for pm in vid_info.split("pm")[1].split("_")[1:] if pm]  # 过滤空字符串
                 # 对数据集做单个的product
-                self.datasets = [f'{ds}.s{seg}.m{pm}' for ds in self.datasets for seg in seg_list for pm in pm_list]
+                self.datasets = [f"{ds}.s{seg}.m{pm}" for ds in self.datasets for seg in seg_list for pm in pm_list]
             except Exception as e:
                 logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
                 raise e
@@ -613,6 +637,19 @@ def generate_summary_statistics(df, model_stats, summary_file):
     logger.info(f"汇总结果已保存到: {summary_file}")
 
 
+def read_result_file(result_file):
+    result_file = Path(result_file)
+    suffix = result_file.suffix.lower()
+    dtype_dict = {"rla": "object", "eln": "object"}
+    if suffix == ".csv":
+        df = pd.read_csv(result_file, dtype=dtype_dict)
+    elif suffix in [".jsonl", ".json"]:
+        df = pd.read_json(result_file, lines=True, dtype=dtype_dict)
+    else:
+        raise ValueError(f"Unsupported file format: {suffix}")
+    return df
+
+
 def print_summary_statistics(df):
     """通用的打印汇总统计函数"""
     logger.info("\n" + "=" * 50)
@@ -661,7 +698,18 @@ def generate_summary_only(output_dir):
                     model_stats[model_name] = json.load(f)
 
             # 读取结果文件
-            result_file = model_dir / f"{model_name}_results.csv"
+            result_file = model_dir / f"{model_name}_results.jsonl"
+
+            if not result_file.exists():
+                if result_file.with_suffix(".csv").exists():
+                    # 兼容旧的CSV结果文件，将其转换为JSONL格式，并把老文件备份
+                    old_result_file = result_file.with_suffix(".csv")
+                    df = read_result_file(old_result_file)
+                    df.to_json(result_file, orient="records", lines=True)
+                    backup_file = old_result_file.with_suffix(".csv.bak")
+                    os.rename(old_result_file, backup_file)
+                    logger.info(f"转换旧的结果文件 {old_result_file} 为 {result_file}，并备份为 {backup_file}")
+
             if result_file.exists():
                 try:
                     df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object','ru':'object','flip_normal_ratio':'object','flip_abnormal_ratio':'object'})
@@ -798,7 +846,7 @@ def run_single_experiment_with_gpu(params_with_config):
         if data_type == "video":
             data, data_shape = ExperimentRunner._process_video_data(data)
         elif "inexact" in data_type:
-            data, data_shape = ExperimentRunner._process_tabular_data(data)   # -> tabular_inexact
+            data, data_shape = ExperimentRunner._process_tabular_data(data)  # -> tabular_inexact
 
         # 训练时间
         start_time = time.time()
@@ -828,9 +876,20 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
         if has_param(model.fit, "X_test"):
-            train_input["X_test"] = [data["X_test"],data_shape,data["y_test_idx"],data["y_test_gt"], data["y_test_gt_idx"], data["NUM_FRAMES"]]
+            train_input["X_test"] = [
+                data["X_test"],
+                data_shape,
+                data["y_test_idx"],
+                data["y_test_gt"],
+                data["y_test_gt_idx"],
+                data["NUM_FRAMES"],
+            ]
         if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
-            train_input["X_test_extra"] = [data.get("vid_kind_test", None),data.get("vid_source_clips_num_test", None), data_shape[1] if data_shape else None]
+            train_input["X_test_extra"] = [
+                data.get("vid_kind_test", None),
+                data.get("vid_source_clips_num_test", None),
+                data_shape[1] if data_shape else None,
+            ]
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -955,7 +1014,20 @@ def main():
     parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
 
     # 必需参数
-    parser.add_argument("--data_type", choices=["video", "tabular_classical","tabular_CV_by_ResNet18","tabular_CV_by_ViT","tabular_NLP_by_BERT","tabular_NLP_by_RoBERTa","classical_bags_inexact"], required=True, help="数据类型：video 或 tabular")
+    parser.add_argument(
+        "--data_type",
+        choices=[
+            "video",
+            "tabular_classical",
+            "tabular_CV_by_ResNet18",
+            "tabular_CV_by_ViT",
+            "tabular_NLP_by_BERT",
+            "tabular_NLP_by_RoBERTa",
+            "classical_bags_inexact",
+        ],
+        required=True,
+        help="数据类型：video 或 tabular",
+    )
 
     parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
 
@@ -967,7 +1039,7 @@ def main():
     parser.add_argument(
         "--parameter_config_path",
         type=str,
-        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})", #video / tabular
+        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})",  # video / tabular
     )
 
     parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有数据集")
@@ -984,7 +1056,7 @@ def main():
         "--eln_list",
         nargs="+",
         type=int_or_float,
-        default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  #0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
+        default=[0.0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  # 0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
         help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
@@ -1017,7 +1089,7 @@ def main():
         "--target_for_unlabeled",
         nargs="+",
         type=str,
-        choices=["fill_unlabel_0","keep_label", "delete_sample"],
+        choices=["fill_unlabel_0", "keep_label", "delete_sample"],
         default=["fill_unlabel_0"],
         help="未标注数据的目标处理方式 (默认: fill_unlabel_0, 可选: fill_unlabel_0, keep_label,delete_sample...待补充)",
     )
