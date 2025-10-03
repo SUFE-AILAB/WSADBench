@@ -1,0 +1,24 @@
+#PUMA模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.PUMA.run.PUMA
+
+# 模型参数
+parameters:
+# 训练参数
+  learning_rate: 0.01
+  epochs: 100     
+  batch_size: 10
+
+  mu1: 0
+  sigma1: 0.1
+  mu2: 1
+  sigma2: 0.1
+
+  n_samples: 10
+  n_neg: 10
+  dropout_rate: 0.1
+  weight_decay: 1e-5
+
+  contamination: 0.1

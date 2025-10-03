@@ -6,6 +6,8 @@ import pandas as pd
 import yaml
 import json
 import os
+# 指定显卡
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -59,7 +61,8 @@ class ModelRegistry:
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
-            "PUMA":"WSADBench.baseline.PUMA.run.PUMA"
+            "PUMA":"WSADBench.baseline.PUMA.run.PUMA",
+            "TabNet": "WSADBench.baseline.TabNet.run.TabNet",
         }
         return default_model_map.get(model_name, None)
 
@@ -77,6 +80,9 @@ class ExperimentRunner:
         datasets=None,
         rla_list=None,
         eln_list=None,
+        ru_list=None,
+        flip_nr_list=None,
+        flip_ar_list=None,
         target_for_unlabeled=None,
         seed_list=None,
         gpu_list=None,
@@ -95,6 +101,9 @@ class ExperimentRunner:
             datasets: 数据集列表
             rla_list: 标注异常比例列表
             eln_list: 标注正常相对la比例列表
+            ru_list: 无标签样本比例列表
+            flip_nr_list: 正常样本错误标注比例列表
+            flip_ar_list: 异常样本错误标注比例列表
             seed_list: 随机种子列表
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
@@ -148,6 +157,9 @@ class ExperimentRunner:
         self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
+        self.ru_list = ru_list if ru_list is not None else [1.0]
+        self.flip_nr_list = flip_nr_list if flip_nr_list is not None else [0.01,0.05,0.1,0.25,0.5]
+        self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01,0.05,0.1,0.25,0.5]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
 
         # 获取数据集列表
@@ -171,6 +183,9 @@ class ExperimentRunner:
         logger.info(f"数据集数量: {len(self.datasets)}")
         logger.info(f"RLA设置: {self.rla_list}")
         logger.info(f"ELN设置: {self.eln_list}")
+        logger.info(f"无标签样本比例设置: {self.ru_list}")
+        logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
+        logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"Seeds: {self.seed_list}")
 
@@ -436,7 +451,7 @@ class ExperimentRunner:
         else:
             df.to_csv(result_file, index=False)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},target_for_unlabeled={result['target_for_unlabeled']}")
+        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}")
 
     def _load_finish_exp(self):
         finished_experiments = set()
@@ -446,7 +461,7 @@ class ExperimentRunner:
             if detail_file.exists():
                 try:
                     df = pd.read_csv(detail_file)
-                    main_setting = df[["model", "dataset", "rla","eln","target_for_unlabeled", "seed"]].drop_duplicates().to_numpy().tolist()
+                    main_setting = df[["model", "dataset", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled", "seed"]].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
                     pass
@@ -466,8 +481,8 @@ class ExperimentRunner:
                 logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
                 raise e
 
-        # 生成实验参数组合
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.target_for_unlabeled, self.seed_list))
+        # 生成实验参数组合  参数传入顺序
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.target_for_unlabeled, self.seed_list,self.flip_nr_list,self.flip_ar_list))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -484,6 +499,9 @@ class ExperimentRunner:
         logger.info(f"数据集数量: {len(self.datasets)}")
         logger.info(f"RLA设置: {self.rla_list}")
         logger.info(f"ELN设置: {self.eln_list}")
+        logger.info(f"无标签样本比例设置: {self.ru_list}")
+        logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
+        logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"Seeds: {self.seed_list}")
 
@@ -545,8 +563,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -557,8 +575,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的时间
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
-        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].mean()
-        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","target_for_unlabeled"])[metric].std()
+        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].mean()
+        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -646,7 +664,7 @@ def generate_summary_only(output_dir):
             result_file = model_dir / f"{model_name}_results.csv"
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object'})
+                    df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object','ru':'object','flip_normal_ratio':'object','flip_abnormal_ratio':'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
@@ -733,7 +751,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,target_for_unlabeled, seed = params
+    model_name, dataset_name, rla,eln,ru,target_for_unlabeled,seed,flip_normal_ratio,flip_abnormal_ratio = params
 
     # 设置GPU环境
     if gpu_id is not None:
@@ -758,6 +776,9 @@ def run_single_experiment_with_gpu(params_with_config):
         data = data_generator.generator(
             la=rla,
             eln=eln,
+            ru=ru,
+            flip_normal_ratio=flip_normal_ratio,
+            flip_abnormal_ratio=flip_abnormal_ratio,
             target_for_unlabeled=target_for_unlabeled,
             at_least_one_labeled=True,
             shortage_mode="ignore",
@@ -765,7 +786,7 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},target_for_unlab beled={target_for_unlabeled}) 没有标注异常，跳过")
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -864,6 +885,9 @@ def run_single_experiment_with_gpu(params_with_config):
             "dataset": dataset_name,
             "rla": rla,
             "eln": eln,
+            "ru": ru,
+            "flip_normal_ratio": flip_normal_ratio,
+            "flip_abnormal_ratio": flip_abnormal_ratio,
             "target_for_unlabeled": target_for_unlabeled,
             "seed": seed,
             "aucroc": metrics["aucroc"],
@@ -879,7 +903,7 @@ def run_single_experiment_with_gpu(params_with_config):
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},target_for_unlabeled={target_for_unlabeled}): "
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
@@ -892,12 +916,15 @@ def run_single_experiment_with_gpu(params_with_config):
     except Exception as e:
         if DEBUG:
             raise e
-        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},target_for_unlabeled={target_for_unlabeled}): {str(e)}")
+        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled}): {str(e)}")
         return {
             "model": model_name,
             "dataset": dataset_name,
             "rla": rla,
             "eln": eln,
+            "ru": ru,
+            "flip_normal_ratio": flip_normal_ratio,
+            "flip_abnormal_ratio": flip_abnormal_ratio,
             "target_for_unlabeled": target_for_unlabeled,
             "seed": seed,
             "aucroc": np.nan,
@@ -959,6 +986,31 @@ def main():
         type=int_or_float,
         default=[0.0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  #0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
         help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+    )
+
+    parser.add_argument(
+        "--ru_list",
+        nargs="+",
+        type=int_or_float,
+        default=[1.0],
+        help="无标签样本比例列表 (默认: 1.0)",
+    )
+
+
+    parser.add_argument(
+        "--flip_nr_list",
+        nargs="+",
+        type=int_or_float,
+        default=[0.01,0.05,0.1,0.25,0.5],
+        help="正常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
+    )
+
+    parser.add_argument(
+        "--flip_ar_list",
+        nargs="+",
+        type=int_or_float,
+        default=[0.01,0.05,0.1,0.25,0.5],
+        help="异常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
     )
 
     parser.add_argument(
@@ -1052,6 +1104,9 @@ def main():
         datasets=args.datasets,
         rla_list=args.rla_list,
         eln_list=args.eln_list,
+        ru_list=args.ru_list,
+        flip_nr_list=args.flip_nr_list,
+        flip_ar_list=args.flip_ar_list,
         target_for_unlabeled=args.target_for_unlabeled,
         seed_list=args.seed_list,
         gpu_list=gpu_list,

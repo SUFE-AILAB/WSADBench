@@ -1,0 +1,10 @@
+#FTTransformer模型参数配置
+
+#模型类路径
+model_class: WSADBench.baseline.FTTransformer.run.FTTransformer
+
+#模型参数：
+parameters:
+  model_name: "FTTransformer"  # 指定使用FTTransformer模型
+  n_epochs: 100  # 训练的最大轮数
+  batch_size: 64  # 每个训练批次的样本数量
