@@ -282,8 +282,8 @@ class DataGenerator:
             alpha: int = 5,
             percentage: float = 0.1,
             noise_type = None,
-            flip_normal_ratio: float = 0.05,
-            flip_abnormal_ratio: float = 0.05,
+            flip_normal_ratio: float = 0.0,
+            flip_abnormal_ratio: float = 0.0,
             duplicate_times: int = 2,
             contam_ratio=1.00,
             noise_ratio: float = 0.05,
@@ -450,12 +450,12 @@ class DataGenerator:
             if noise_type is None:
                 pass
             # we respectively generate the duplicated anomalies for the training and testing set
-            if noise_type == "duplicated_anomalies":
-                X_train, y_train = self.add_duplicated_anomalies(X_train, y_train, duplicate_times=duplicate_times)
-                X_test, y_test = self.add_duplicated_anomalies(X_test, y_test, duplicate_times=duplicate_times)
-            # whether to remove the anomaly contamination in the unlabeled data
-            elif noise_type == "anomaly_contamination":
-                idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
+            # if noise_type == "duplicated_anomalies":
+            #     X_train, y_train = self.add_duplicated_anomalies(X_train, y_train, duplicate_times=duplicate_times)
+            #     X_test, y_test = self.add_duplicated_anomalies(X_test, y_test, duplicate_times=duplicate_times)
+            # # whether to remove the anomaly contamination in the unlabeled data
+            # elif noise_type == "anomaly_contamination":
+            #     idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
             #对训练集进行inaccurate setting处理
             # notice that label contamination can only be added in the training set
             elif noise_type == "label_contamination":
