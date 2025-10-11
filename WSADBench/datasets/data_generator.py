@@ -245,8 +245,8 @@ class DataGenerator:
 
             # 需要翻转的样本数量
             if type(flip_abnormal_ratio) == float:
-                n_flip_normal = int(len(normal_idx) * flip_normal_ratio)
-                n_flip_abnormal = int(len(abnormal_idx) * flip_abnormal_ratio)
+                n_flip_normal = ceil(len(normal_idx) * flip_normal_ratio)
+                n_flip_abnormal = ceil(len(abnormal_idx) * flip_abnormal_ratio)
 
                 # 随机采样要翻转的索引
                 flip_normals = np.random.choice(normal_idx, size=n_flip_normal, replace=False)
@@ -288,6 +288,7 @@ class DataGenerator:
             contam_ratio=1.00,
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
+            data_type=None,
             # seg_num=None,
             # pretrain_model=None,
     ):
@@ -303,6 +304,8 @@ class DataGenerator:
 
         # set seed for reproducible results
         self.utils.set_seed(self.seed)
+        if '_' in data_type:
+            data_type = data_type.split('_', 1)[1]
 
         data = None
         # load dataset
@@ -310,33 +313,21 @@ class DataGenerator:
             assert X is not None and y is not None, "For customized dataset, you should provide the X and y!"
             print("Testing on customized dataset...")
         else:
+            if data_type == "video":
+                real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
 
-            for kind, dataset_list in self.all_dataset_list.items():
-                if kind in ["video"]:
-                    real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
-                else:
-                    real_ds_name = self.dataset
-
-                if real_ds_name not in dataset_list:
-                    continue
-
-                if "DATA_DIR" in self.configs[kind]:
+                if "DATA_DIR" in self.configs[data_type]:
                     data_path = (
-                            self.wd / self.configs[kind]["DATA_DIR"] / (self.dataset + self.configs[kind]["END_WITH"])
+                            self.wd / self.configs[data_type]["DATA_DIR"] / (self.dataset + self.configs[data_type]["END_WITH"])
                     )
                     data = np.load(data_path, allow_pickle=True)
 
                     X, y = data["X"], data["y"]
-                    y_inst_gt = None
-                    if "inexact" in kind:
-                        y_inst_gt = data["y_gt"]
-                    break
 
-                ManagerClass = import_class(self.configs[kind][real_ds_name]["MANAGER_CLASS"])
-                ds_config = self.configs[kind][real_ds_name]
+                ManagerClass = import_class(self.configs[data_type][real_ds_name]["MANAGER_CLASS"])
+                ds_config = self.configs[data_type][real_ds_name]
                 ds_config["working_dir"] = self.wd
                 ds_config["seed"] = self.seed
-
 
                 ds_param = self.dataset.split(".")[1:]  # .s32.mi3d
                 _params = {}
@@ -350,6 +341,21 @@ class DataGenerator:
 
                 data_manager = ManagerClass(ds_config)
                 data = data_manager.load_data(**_params)
+
+            else:
+                real_ds_name = self.dataset
+
+                if "DATA_DIR" in self.configs[data_type]:
+                    data_path = (
+                            self.wd / self.configs[data_type]["DATA_DIR"] / (self.dataset + self.configs[data_type]["END_WITH"])
+                    )
+                    data = np.load(data_path, allow_pickle=True)
+
+                    X, y = data["X"], data["y"]
+                    #for tabular_inexact
+                    y_inst_gt = None
+                    if "inexact" in data_type:
+                        y_inst_gt = data["y_gt"]
 
             if data is None:
                 raise NotImplementedError(f"Dataset {self.dataset} not found in the available datasets.")

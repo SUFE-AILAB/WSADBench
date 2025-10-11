@@ -835,6 +835,7 @@ def run_single_experiment_with_gpu(params_with_config):
             noise_type=noise_type,
             at_least_one_labeled=True,
             shortage_mode="ignore",
+            data_type=data_type
         )
 
         # 检查数据有效性
@@ -1033,6 +1034,7 @@ def main():
             "classical_bags_inexact",
         ],
         required=True,
+        default=["tabular_classical"],
         help="数据类型：video 或 tabular",
     )
 
