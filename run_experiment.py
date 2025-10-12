@@ -507,12 +507,17 @@ class ExperimentRunner:
                 raise e
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.noise_type))
-        
+        if self.flip_nr_list == [0.0] and self.flip_ar_list == [0.0]:
+            noise_type = None
+        else:
+            noise_type = "label_contamination"
+
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list))
+
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
             num_before_skip = len(experiment_params)
-            experiment_params = [params for params in experiment_params if params[:-1] not in finished_experiments]
+            experiment_params = [params for params in experiment_params if params not in finished_experiments]
             logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
 
         if not experiment_params:
@@ -528,7 +533,7 @@ class ExperimentRunner:
         logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
-        logger.info(f"噪声类型: {self.noise_type}")
+        logger.info(f"噪声类型: {noise_type}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -642,7 +647,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
 def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
-    dtype_dict = {"rla": "object", "eln": "object","ru":"object","flip_normal_ratio":"object","flip_abnormal_ratio":"object","target_for_unlabeled":"object","seed":"object","noise_type":"object"}
+    dtype_dict = {"rla": "object", "eln": "object","ru":"object","flip_normal_ratio":"object","flip_abnormal_ratio":"object","target_for_unlabeled":"object","seed":"object"}
     if suffix == ".csv":
         df = pd.read_csv(result_file, dtype=dtype_dict)
     elif suffix in [".jsonl", ".json"]:
@@ -801,7 +806,12 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed,noise_type = params
+    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed = params
+
+    if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
+        noise_type = "label_contamination"
+    else:
+        noise_type = None
 
     # 设置GPU环境
     if gpu_id is not None:
