@@ -219,54 +219,52 @@ class DataGenerator:
 
         return X, y
     #增加标签污染，inaccurate
-    def add_label_contamination(self, X, y, noise_ratio: float, flip_normal_ratio, flip_abnormal_ratio):
-        if noise_ratio == 0.0:
-            pass
+    def add_label_contamination(self, X, y,flip_normal_ratio, flip_abnormal_ratio):
+        
+        """
+        Add label noise by flipping some normal samples to anomaly and some anomaly samples to normal.
+        
+        Args:
+            X: feature matrix
+            y: label array (0 = normal, 1 = anomaly)
+            flip_normal_ratio: float, percentage of normal samples (0) to flip to anomalies (1)
+            flip_abnormal_ratio: float, percentage of anomaly samples (1) to flip to normal (0)
+
+        Returns:
+            X, y with noisy labels
+        """
+        # 先转整型，防止后续下游 safe-casting 报错
+        y_noisy = y.astype(np.int64, copy=True)
+        n_samples = len(y)
+
+        # 找到正常和异常样本索引
+        normal_idx = np.where(y == 0)[0]
+        abnormal_idx = np.where(y == 1)[0]
+
+        # 需要翻转的样本数量
+        if type(flip_abnormal_ratio) == float:
+            n_flip_normal = ceil(len(normal_idx) * flip_normal_ratio)
+            n_flip_abnormal = ceil(len(abnormal_idx) * flip_abnormal_ratio)
+
+            # 随机采样要翻转的索引
+            flip_normals = np.random.choice(normal_idx, size=n_flip_normal, replace=False)
+            flip_abnormals = np.random.choice(abnormal_idx, size=n_flip_abnormal, replace=False)
+
+        elif type(flip_abnormal_ratio) == int:
+            flip_normals = np.random.choice(normal_idx, size=flip_normal_ratio, replace=False)
+            flip_abnormals = np.random.choice(abnormal_idx, size=flip_abnormal_ratio, replace=False)
+        
+        if len(flip_normals) + len(flip_abnormals) != 0:
+            # 执行标签翻转
+            y_noisy[flip_normals] = 1
+            y_noisy[flip_abnormals] = 0
+        
         else:
-            """
-            Add label noise by flipping some normal samples to anomaly and some anomaly samples to normal.
-            
-            Args:
-                X: feature matrix
-                y: label array (0 = normal, 1 = anomaly)
-                flip_normal_ratio: float, percentage of normal samples (0) to flip to anomalies (1)
-                flip_abnormal_ratio: float, percentage of anomaly samples (1) to flip to normal (0)
-
-            Returns:
-                X, y with noisy labels
-            """
-            # 先转整型，防止后续下游 safe-casting 报错
-            y_noisy = y.astype(np.int64, copy=True)
-            n_samples = len(y)
-
-            # 找到正常和异常样本索引
-            normal_idx = np.where(y == 0)[0]
-            abnormal_idx = np.where(y == 1)[0]
-
-            # 需要翻转的样本数量
-            if type(flip_abnormal_ratio) == float:
-                n_flip_normal = ceil(len(normal_idx) * flip_normal_ratio)
-                n_flip_abnormal = ceil(len(abnormal_idx) * flip_abnormal_ratio)
-
-                # 随机采样要翻转的索引
-                flip_normals = np.random.choice(normal_idx, size=n_flip_normal, replace=False)
-                flip_abnormals = np.random.choice(abnormal_idx, size=n_flip_abnormal, replace=False)
-
-            elif type(flip_abnormal_ratio) == int:
-                flip_normals = np.random.choice(normal_idx, size=flip_normal_ratio, replace=False)
-                flip_abnormals = np.random.choice(abnormal_idx, size=flip_abnormal_ratio, replace=False)
-            
-            if len(flip_normals) + len(flip_abnormals) != 0:
-                # 执行标签翻转
-                y_noisy[flip_normals] = 1
-                y_noisy[flip_abnormals] = 0
-            
-            else:
-                raise ValueError("No samples were selected for label flipping. Please check the flip ratios.")
-            
-            print(f"Label contamination: flipped {len(flip_normals)} normal samples to anomalies and {len(flip_abnormals)} anomalies to normal.")
-            
-            return X, y_noisy
+            raise ValueError("No samples were selected for label flipping. Please check the flip ratios.")
+        
+        print(f"Label contamination: flipped {len(flip_normals)} normal samples to anomalies and {len(flip_abnormals)} anomalies to normal.")
+        
+        return X, y_noisy
 
     def generator(
             self,
@@ -465,7 +463,7 @@ class DataGenerator:
             #对训练集进行inaccurate setting处理
             # notice that label contamination can only be added in the training set
             elif noise_type == "label_contamination":
-                X_train, y_train = self.add_label_contamination(X_train, y_train, noise_ratio=noise_ratio,flip_normal_ratio=flip_normal_ratio, flip_abnormal_ratio=flip_abnormal_ratio)
+                X_train, y_train = self.add_label_contamination(X_train, y_train,flip_normal_ratio=flip_normal_ratio, flip_abnormal_ratio=flip_abnormal_ratio)
 
             # minmax scaling1
             if minmax:

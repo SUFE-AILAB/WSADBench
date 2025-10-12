@@ -6,8 +6,6 @@ import pandas as pd
 import yaml
 import json
 import os
-# 指定显卡
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -479,16 +477,16 @@ class ExperimentRunner:
         logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']}")
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled","noise_type", "seed"]
-
+        
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed"]
         finished_experiments = set()
         for model_name in self.models:
-            detail_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
+            detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
 
             if detail_file.exists():
                 try:
-                    df = pd.read_csv(detail_file)
-                    main_setting = df[["model", "dataset", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type", "seed"]].drop_duplicates().to_numpy().tolist()
+                    df = read_result_file(detail_file)
+                    main_setting = df[main_keys].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
                     pass
@@ -509,12 +507,12 @@ class ExperimentRunner:
                 raise e
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.target_for_unlabeled, self.seed_list,self.flip_nr_list,self.flip_ar_list,self.noise_type))
-
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.noise_type))
+        
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
             num_before_skip = len(experiment_params)
-            experiment_params = [params for params in experiment_params if params not in finished_experiments]
+            experiment_params = [params for params in experiment_params if params[:-1] not in finished_experiments]
             logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
 
         if not experiment_params:
@@ -644,7 +642,7 @@ def generate_summary_statistics(df, model_stats, summary_file):
 def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
-    dtype_dict = {"rla": "object", "eln": "object"}
+    dtype_dict = {"rla": "object", "eln": "object","ru":"object","flip_normal_ratio":"object","flip_abnormal_ratio":"object","target_for_unlabeled":"object","seed":"object","noise_type":"object"}
     if suffix == ".csv":
         df = pd.read_csv(result_file, dtype=dtype_dict)
     elif suffix in [".jsonl", ".json"]:
@@ -803,7 +801,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,ru,target_for_unlabeled,seed,flip_normal_ratio,flip_abnormal_ratio,noise_type = params
+    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed,noise_type = params
 
     # 设置GPU环境
     if gpu_id is not None:

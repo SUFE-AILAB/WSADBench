@@ -6,7 +6,7 @@ import torch
 
 class REPEN():
     def __init__(self, seed, model_name='REPEN', save_suffix='test',
-                 mode:str='supervised', hidden_dim:int=20, batch_size:int=256, nb_batch:int=50, n_epochs:int=1000,
+                 mode:str='supervised', hidden_dim:int=20, batch_size:int=256, nb_batch:int=50, n_epochs:int=30,
                  verbose:bool=True):
         self.utils = Utils()
         self.device = self.utils.get_device(True)
