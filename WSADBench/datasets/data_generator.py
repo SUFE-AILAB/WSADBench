@@ -218,16 +218,53 @@ class DataGenerator:
                 X = X[:, idx]
 
         return X, y
+    #增加标签污染，inaccurate
+    def add_label_contamination(self, X, y,flip_normal_ratio, flip_abnormal_ratio):
+        
+        """
+        Add label noise by flipping some normal samples to anomaly and some anomaly samples to normal.
+        
+        Args:
+            X: feature matrix
+            y: label array (0 = normal, 1 = anomaly)
+            flip_normal_ratio: float, percentage of normal samples (0) to flip to anomalies (1)
+            flip_abnormal_ratio: float, percentage of anomaly samples (1) to flip to normal (0)
 
-    def add_label_contamination(self, X, y, noise_ratio: float):
-        if noise_ratio == 0.0:
-            pass
+        Returns:
+            X, y with noisy labels
+        """
+        # 先转整型，防止后续下游 safe-casting 报错
+        y_noisy = y.astype(np.int64, copy=True)
+        n_samples = len(y)
+
+        # 找到正常和异常样本索引
+        normal_idx = np.where(y == 0)[0]
+        abnormal_idx = np.where(y == 1)[0]
+
+        # 需要翻转的样本数量
+        if type(flip_abnormal_ratio) == float:
+            n_flip_normal = ceil(len(normal_idx) * flip_normal_ratio)
+            n_flip_abnormal = ceil(len(abnormal_idx) * flip_abnormal_ratio)
+
+            # 随机采样要翻转的索引
+            flip_normals = np.random.choice(normal_idx, size=n_flip_normal, replace=False)
+            flip_abnormals = np.random.choice(abnormal_idx, size=n_flip_abnormal, replace=False)
+
+        elif type(flip_abnormal_ratio) == int:
+            flip_normals = np.random.choice(normal_idx, size=flip_normal_ratio, replace=False)
+            flip_abnormals = np.random.choice(abnormal_idx, size=flip_abnormal_ratio, replace=False)
+        
+        if len(flip_normals) + len(flip_abnormals) != 0:
+            # 执行标签翻转
+            y_noisy[flip_normals] = 1
+            y_noisy[flip_abnormals] = 0
+        
         else:
-            # here we consider the label flips situation: a label is randomly filpped to another class with probability p (i.e., noise ratio)
-            idx_flips = np.random.choice(np.arange(len(y)), int(len(y) * noise_ratio), replace=False)
-            y[idx_flips] = 1 - y[idx_flips]  # change 0 to 1 and 1 to 0
-
-        return X, y
+            raise ValueError("No samples were selected for label flipping. Please check the flip ratios.")
+        
+        print(f"Label contamination: flipped {len(flip_normals)} normal samples to anomalies and {len(flip_abnormals)} anomalies to normal.")
+        
+        return X, y_noisy
 
     def generator(
             self,
@@ -236,16 +273,20 @@ class DataGenerator:
             minmax=True,
             la=None,
             eln=None,
+            ru=None,
             target_for_unlabeled=None,
             at_least_one_labeled=False,
             realistic_synthetic_mode=None,
             alpha: int = 5,
             percentage: float = 0.1,
-            noise_type=None,
+            noise_type = None,
+            flip_normal_ratio: float = 0.0,
+            flip_abnormal_ratio: float = 0.0,
             duplicate_times: int = 2,
             contam_ratio=1.00,
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
+            data_type=None,
             # seg_num=None,
             # pretrain_model=None,
     ):
@@ -261,6 +302,8 @@ class DataGenerator:
 
         # set seed for reproducible results
         self.utils.set_seed(self.seed)
+        if '_' in data_type:
+            data_type = data_type.split('_', 1)[1]
 
         data = None
         # load dataset
@@ -268,33 +311,21 @@ class DataGenerator:
             assert X is not None and y is not None, "For customized dataset, you should provide the X and y!"
             print("Testing on customized dataset...")
         else:
+            if data_type == "video":
+                real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
 
-            for kind, dataset_list in self.all_dataset_list.items():
-                if kind in ["video"]:
-                    real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
-                else:
-                    real_ds_name = self.dataset
-
-                if real_ds_name not in dataset_list:
-                    continue
-
-                if "DATA_DIR" in self.configs[kind]:
+                if "DATA_DIR" in self.configs[data_type]:
                     data_path = (
-                            self.wd / self.configs[kind]["DATA_DIR"] / (self.dataset + self.configs[kind]["END_WITH"])
+                            self.wd / self.configs[data_type]["DATA_DIR"] / (self.dataset + self.configs[data_type]["END_WITH"])
                     )
                     data = np.load(data_path, allow_pickle=True)
 
                     X, y = data["X"], data["y"]
-                    y_inst_gt = None
-                    if "inexact" in kind:
-                        y_inst_gt = data["y_gt"]
-                    break
 
-                ManagerClass = import_class(self.configs[kind][real_ds_name]["MANAGER_CLASS"])
-                ds_config = self.configs[kind][real_ds_name]
+                ManagerClass = import_class(self.configs[data_type][real_ds_name]["MANAGER_CLASS"])
+                ds_config = self.configs[data_type][real_ds_name]
                 ds_config["working_dir"] = self.wd
                 ds_config["seed"] = self.seed
-
 
                 ds_param = self.dataset.split(".")[1:]  # .s32.mi3d
                 _params = {}
@@ -308,6 +339,21 @@ class DataGenerator:
 
                 data_manager = ManagerClass(ds_config)
                 data = data_manager.load_data(**_params)
+
+            else:
+                real_ds_name = self.dataset
+
+                if "DATA_DIR" in self.configs[data_type]:
+                    data_path = (
+                            self.wd / self.configs[data_type]["DATA_DIR"] / (self.dataset + self.configs[data_type]["END_WITH"])
+                    )
+                    data = np.load(data_path, allow_pickle=True)
+
+                    X, y = data["X"], data["y"]
+                    #for tabular_inexact
+                    y_inst_gt = None
+                    if "inexact" in data_type:
+                        y_inst_gt = data["y_gt"]
 
             if data is None:
                 raise NotImplementedError(f"Dataset {self.dataset} not found in the available datasets.")
@@ -367,24 +413,26 @@ class DataGenerator:
                         X, y, realistic_synthetic_mode=realistic_synthetic_mode, alpha=alpha, percentage=percentage
                     )
 
+#----------------------------------------------------------------------------------------------------------------------------------
+
             # whether to add different types of noise for testing the robustness of benchmark models
-            if noise_type is None:
-                pass
+            # if noise_type is None:
+            #     pass
 
-            elif noise_type == "duplicated_anomalies":
-                # X, y = self.add_duplicated_anomalies(X, y, duplicate_times=duplicate_times)
-                pass
+            # elif noise_type == "duplicated_anomalies":
+            #     X, y = self.add_duplicated_anomalies(X, y, duplicate_times=duplicate_times)
 
-            elif noise_type == "irrelevant_features":
-                X, y = self.add_irrelevant_features(X, y, noise_ratio=noise_ratio)
 
-            elif noise_type == "label_contamination":
-                pass
+            # elif noise_type == "irrelevant_features":
+            #     X, y = self.add_irrelevant_features(X, y, noise_ratio=noise_ratio)
 
-            else:
-                raise NotImplementedError
+            # elif noise_type == "label_contamination":
+            #     X, y = self.add_label_contamination(X, y, noise_ratio=noise_ratio, flip_normal_ratio=flip_normal_ratio, flip_abnormal_ratio=flip_abnormal_ratio)
 
-            print(f"current noise type: {noise_type}")
+            # else:
+            #     raise NotImplementedError
+
+            # print(f"current noise type: {noise_type}")
 
             # show the statistic
             self.utils.data_description(X=X, y=y)
@@ -403,14 +451,19 @@ class DataGenerator:
                 y_test_gt_idx = torch.cat([torch.arange(i*n_samples, (i+1)*n_samples) for i in idx_test])
                 y_test_gt = y_inst_gt[y_test_gt_idx]
 
+            if noise_type is None:
+                pass
             # we respectively generate the duplicated anomalies for the training and testing set
-            if noise_type == "duplicated_anomalies":
-                X_train, y_train = self.add_duplicated_anomalies(X_train, y_train, duplicate_times=duplicate_times)
-                X_test, y_test = self.add_duplicated_anomalies(X_test, y_test, duplicate_times=duplicate_times)
-
+            # if noise_type == "duplicated_anomalies":
+            #     X_train, y_train = self.add_duplicated_anomalies(X_train, y_train, duplicate_times=duplicate_times)
+            #     X_test, y_test = self.add_duplicated_anomalies(X_test, y_test, duplicate_times=duplicate_times)
+            # # whether to remove the anomaly contamination in the unlabeled data
+            # elif noise_type == "anomaly_contamination":
+            #     idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
+            #对训练集进行inaccurate setting处理
             # notice that label contamination can only be added in the training set
             elif noise_type == "label_contamination":
-                X_train, y_train = self.add_label_contamination(X_train, y_train, noise_ratio=noise_ratio)
+                X_train, y_train = self.add_label_contamination(X_train, y_train,flip_normal_ratio=flip_normal_ratio, flip_abnormal_ratio=flip_abnormal_ratio)
 
             # minmax scaling1
             if minmax:
@@ -462,43 +515,61 @@ class DataGenerator:
         else:
             raise NotImplementedError
 
+        if type(ru) == float:
+            idx_using_normal = np.random.choice(idx_normal, ceil(ru * len(idx_normal)), replace=False)
+        elif type(ru) == int:
+            if ru > len(idx_normal):
+                if shortage_mode == "raise":
+                    raise AssertionError(
+                        f"the number of using unlabeled samples are greater than the total unlabeled samples: {len(idx_normal)} !"
+                        f'Please set a smaller ru or change the shortage_mode to "ignore" or "duplicate".'
+                    )
+                elif shortage_mode == "ignore":
+                    idx_using_normal = idx_normal
+                else:
+                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+            else:
+                idx_using_normal = np.random.choice(idx_normal, ru, replace=False)
+
+
         if type(eln) == float:
             if at_least_one_labeled:
-                idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+                idx_labeled_normal = np.random.choice(idx_using_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
             else:
-                idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+                idx_labeled_normal = np.random.choice(idx_using_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
         elif type(eln) == int:
-            if eln > len(idx_normal):
+            if eln > len(idx_using_normal):
                 if shortage_mode == "raise":
                     raise AssertionError(
                         f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
                         f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
                     )
                 elif shortage_mode == "ignore":
-                    idx_labeled_normal = idx_normal
+                    idx_labeled_normal = idx_using_normal
                 else:
                     raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
             else:
-                idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
+                idx_labeled_normal = np.random.choice(idx_using_normal, eln, replace=False)
         else:
             raise NotImplementedError
+        
 
         idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
-        idx_unlabeled_normal = np.setdiff1d(idx_normal, idx_labeled_normal)
-        # whether to remove the anomaly contamination in the unlabeled data
-        if noise_type == "anomaly_contamination":
-            idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
-
+        idx_unlabeled_normal = np.setdiff1d(idx_using_normal, idx_labeled_normal)
         # unlabel data = normal data + unlabeled anomalies (which is considered as contamination)
         idx_unlabeled = np.append(idx_unlabeled_normal, idx_unlabeled_anomaly)
+        final_indices = np.concatenate([idx_labeled_anomaly, idx_labeled_normal, idx_unlabeled])
 
-        del idx_anomaly, idx_unlabeled_anomaly
+        # 根据 final_indices 重新取 X_train / y_train
+        X_train = X_train[final_indices]
+        y_train = y_train[final_indices]
 
-        # that of labeled anomalies is 1
-        y_train[idx_labeled_anomaly] = 1
-        # 设置掩码区分出有标签和无标签样本
+        # 构建 mask 实现eln相关功能
         mask = np.ones_like(y_train, dtype=int)
-        mask[idx_unlabeled] = 0  # 无标签索引处赋值为0
+        # unlabeled 样本 mask=0
+        mask[np.isin(final_indices, idx_unlabeled)] = 0  
+        # 保证 labeled anomaly 的标签是 1
+        y_train[np.isin(final_indices, idx_labeled_anomaly)] = 1
 
         if target_for_unlabeled == "fill_unlabel_0":
             y_train[mask == 0] = 0  # 无标签样本的标签为0

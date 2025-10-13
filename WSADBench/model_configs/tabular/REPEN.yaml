@@ -7,3 +7,4 @@ model_class: WSADBench.baseline.REPEN.run.REPEN
 # 模型参数
 parameters:
   verbose: true
+  n_epochs: 30

@@ -1,0 +1,15 @@
+#TabNet模型配置文件
+#指定模型参数和路径类
+
+#模型类路径
+model_class: WSADBench.baseline.TabNet.run.TabNet
+
+#模型参数
+parameters:
+    n_d: 8
+    n_a: 8
+    n_steps: 3
+    gamma: 1.3
+    #训练参数
+    batch_size: 1024
+
