@@ -507,11 +507,6 @@ class ExperimentRunner:
                 raise e
 
         # 生成实验参数组合  参数传入顺序
-        if self.flip_nr_list == [0.0] and self.flip_ar_list == [0.0]:
-            noise_type = None
-        else:
-            noise_type = "label_contamination"
-
         experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list))
 
         finished_experiments = self._load_finish_exp()
@@ -533,7 +528,7 @@ class ExperimentRunner:
         logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
-        logger.info(f"噪声类型: {noise_type}")
+        logger.info(f"噪声类型: {self.noise_type}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -1065,7 +1060,7 @@ def main():
         "--rla_list",
         nargs="+",
         type=int_or_float,
-        default=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],
+        default=[1.0],
         help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
@@ -1073,7 +1068,7 @@ def main():
         "--eln_list",
         nargs="+",
         type=int_or_float,
-        default=[0.0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0],  # 0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
+        default=[0.0],  # 0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
         help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
@@ -1090,7 +1085,7 @@ def main():
         "--flip_nr_list",
         nargs="+",
         type=int_or_float,
-        default=[0.01,0.05,0.1,0.25,0.5],
+        default=[0.0],
         help="正常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
     )
 
@@ -1098,7 +1093,7 @@ def main():
         "--flip_ar_list",
         nargs="+",
         type=int_or_float,
-        default=[0.01,0.05,0.1,0.25,0.5],
+        default=[0.0],
         help="异常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
     )
 
