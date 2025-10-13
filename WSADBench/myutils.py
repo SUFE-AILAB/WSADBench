@@ -73,17 +73,19 @@ class Utils():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    def get_device(self, gpu_specific=False):
+    def get_device(self, gpu_specific=False, verbose=True, gid=0):
         if gpu_specific:
             if torch.cuda.is_available():
                 n_gpu = torch.cuda.device_count()
-                print(f'number of gpu: {n_gpu}')
-                print(f'cuda name: {torch.cuda.get_device_name(0)}')
-                print('GPU is on')
+                if verbose:
+                    print(f'number of gpu: {n_gpu}')
+                    print(f'cuda name: {torch.cuda.get_device_name(gid)}')
+                    print('GPU is on')
             else:
-                print('GPU is off')
+                if verbose:
+                    print('GPU is off')
 
-            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            device = torch.device(f"cuda:{gid}" if torch.cuda.is_available() else "cpu")
         else:
             device = torch.device("cpu")
         return device
