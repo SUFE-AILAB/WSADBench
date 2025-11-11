@@ -60,7 +60,12 @@ class NTL:
         # Create optimizer and scheduler
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=self.step_size, gamma=self.gamma)
-
+    def count_parameters(self, model):
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"模型总参数量: {total_params:,}")
+        print(f"可训练参数量: {trainable_params:,}")
+        return total_params
     def fit(self, X_train, y_train, ratio=None):
         # 单独算batch_size（5等分）
         batch_size = X_train.shape[0] // 5 + 1
@@ -84,6 +89,7 @@ class NTL:
         # Initialize model
         self._init_model(X_train.shape[1])
         self.model.to(self.device)  # 转GPU
+        # self.count_parameters(self.model)
         print(f'x_dim:{self.model.x_dim}')
         # Train model
         self.model = fit_ntl(
