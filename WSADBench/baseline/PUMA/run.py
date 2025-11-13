@@ -35,7 +35,7 @@ class PUMA:
                  hidden_neurons=None,
                  hidden_activation='relu',
                  batch_norm=True,
-                 learning_rate=0.01,
+                 learning_rate:float=0.01,
                  epochs=100,
                  batch_size=10,
                  n_samples=10,
@@ -45,7 +45,7 @@ class PUMA:
                  sigma2 = 0.1,
                  n_neg = 10,
                  dropout_rate=0.1,
-                 weight_decay=1e-5,
+                 weight_decay:float=1e-5,
                  preprocessing=True,
                  contamination=0.1,
                  random_state = 331,
@@ -113,7 +113,7 @@ class PUMA:
         if self.verbose:
             print(self.model)
         self.optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay,amsgrad = True
+            self.model.parameters(), lr=self.learning_rate, weight_decay=float(self.weight_decay),amsgrad = True
         )
 
 
@@ -162,8 +162,8 @@ class PUMA:
             
         if self.cont_factor>0:
             tot_inst = X.shape[0]
-            inst_labeledbags = len(np.where(y_bags == 1)[0])
-            inst_unlabeledbags = (tot_inst - len(np.where(y_bags == 1)[0]))
+            inst_labeledbags = len(np.where(y_bags == 1)[0]) * n_samples
+            inst_unlabeledbags = (self.n_bags - len(np.where(y_bags == 1)[0])) * n_samples
             self.cont_factor = max((self.cont_factor*tot_inst - 0.25*inst_labeledbags)/inst_unlabeledbags,0)
         y_bags = torch.from_numpy(y_bags)
         X_inst = X  # X已在运行脚本中处理为二维

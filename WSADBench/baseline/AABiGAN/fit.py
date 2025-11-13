@@ -65,10 +65,16 @@ def fit_aabigan(
     if len(X_labeled_anomaly) > 0:
         labeled_dataset = TensorDataset(X_labeled_anomaly)
         labeled_loader = DataLoader(
-            labeled_dataset, batch_size=min(batch_size // 4, len(X_labeled_anomaly)), shuffle=True, drop_last=False
+            labeled_dataset, batch_size=min(batch_size // 4, len(X_labeled_anomaly)), shuffle=True, drop_last=True
         )
     else:
         labeled_loader = None
+    
+    num_unlabel = X_unlabeled.size(0)
+# 如果样本数小于 batch_size，则简单重复补足
+    if num_unlabel < batch_size:
+        repeat_times = (batch_size + num_unlabel - 1) // num_unlabel  # 向上取整
+        X_unlabeled = X_unlabeled.repeat((repeat_times, *([1] * (X_unlabeled.dim() - 1))))[:batch_size]
 
     unlabeled_dataset = TensorDataset(X_unlabeled)
     unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -185,7 +191,7 @@ def fit_aabigan(
                 z_normal = encoder(unlabeled_batch[: labeled_batch.size(0)])
                 # 最大化异常和正常样本在潜在空间的距离
                 anomaly_loss = -torch.mean(torch.norm(z_anomaly - z_normal, dim=1))
-
+            print(f'anomaly_loss:{anomaly_loss}')
             # 辅助损失
             aux_loss = 0.0
             if aux_batch is not None:

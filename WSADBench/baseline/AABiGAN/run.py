@@ -190,7 +190,7 @@ class AABiGAN:
             print(f"Labeled anomalies: {len(X_labeled_anomaly)} samples")
             print(f"Unlabeled data: {len(X_unlabeled)} samples")
 
-        # 创建辅助异常数据
+        # 创建辅助异常数据    
         X_aux = None
         if len(X_labeled_anomaly) > 0 and self.aux_ratio > 0:
             X_aux = create_auxiliary_data(X_unlabeled, X_labeled_anomaly, self.aux_ratio, self.aux_strategy)

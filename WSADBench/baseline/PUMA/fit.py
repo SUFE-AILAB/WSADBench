@@ -14,7 +14,6 @@ import io
 from torch.utils.tensorboard import SummaryWriter
 from WSADBench.baseline.PUMA.model import PyODDataset, inner_autoencoder
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def _ss_loss(l1, y,model_A,model_B,mu1, sigma1, mu2, sigma2,device):

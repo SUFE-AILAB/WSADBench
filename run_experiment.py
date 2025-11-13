@@ -87,13 +87,14 @@ class ExperimentRunner:
         gpu_list=None,
         DEBUG=False,
         NO_RESUME=False,
+        split_rate_eln=None
     ):
         """
         初始化运行器
 
         Args:
             models: 要运行的模型列表
-            data_type: 数据类型，'video' 或 'tabular'
+            data_type: 数据类型，'video' 或 'tabular','tabular_inexact'
             n_jobs: 并行作业数量，-1表示使用所有CPU核心
             output_dir: 输出目录
             parameter_config_path: 参数配置文件路径
@@ -104,6 +105,7 @@ class ExperimentRunner:
             flip_nr_list: 正常样本错误标注比例列表
             flip_ar_list: 异常样本错误标注比例列表
             seed_list: 随机种子列表
+            split_rate_eln: 对数据集的划分（为了eln功能扩展）
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
@@ -169,6 +171,7 @@ class ExperimentRunner:
         self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01,0.05,0.1,0.25,0.5]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
         self.noise_type = noise_type if noise_type is not None else None
+        self.split_rate_eln = split_rate_eln if split_rate_eln is not None else 0.8
 
         # 获取数据集列表
         if datasets is None:
@@ -196,6 +199,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
+        logger.info(f"eln_setting下的数据划分比例(eln为0.0时不生效): {self.split_rate_eln}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -323,7 +327,7 @@ class ExperimentRunner:
             datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
             logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
         elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
-            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact"]
+            datasets = self.data_generator.generate_dataset_list()["classical_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
         return datasets
 
@@ -474,11 +478,11 @@ class ExperimentRunner:
         else:
             df.to_json(result_file, orient="records", lines=True)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']}")
+        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']},split_rate_eln = {result['split_rate_eln']}")
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed"]
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","split_rate_eln"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -486,6 +490,7 @@ class ExperimentRunner:
             if detail_file.exists():
                 try:
                     df = read_result_file(detail_file)
+                    df = df[df["aucroc"].notna() & (df["aucroc"] > 0)]  # 只考虑有结果且大于0的实验
                     main_setting = df[main_keys].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
@@ -507,7 +512,7 @@ class ExperimentRunner:
                 raise e
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.split_rate_eln))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -529,6 +534,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
+        logger.info(f"eln_setting下的数据划分比例(若eln为0.0时，不起作用): {self.split_rate_eln}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -589,8 +595,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -801,7 +807,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed = params
+    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed,split_rate_eln = params
 
     if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
         noise_type = "label_contamination"
@@ -838,12 +844,13 @@ def run_single_experiment_with_gpu(params_with_config):
             noise_type=noise_type,
             at_least_one_labeled=True,
             shortage_mode="ignore",
-            data_type=data_type
+            data_type=data_type,
+            split_rate_eln=split_rate_eln
         )
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type}) 没有标注异常，跳过")
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},split_rate_eln = {split_rate_eln}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -961,6 +968,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
             "noise_type": noise_type,
+            "split_rate_eln":split_rate_eln,
             "fit_time": fit_time,
             "inference_time": inference_time,
             "n_train": len(data["y_train"]),
@@ -972,7 +980,7 @@ def run_single_experiment_with_gpu(params_with_config):
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): "
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},split={split_rate_eln}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
@@ -999,6 +1007,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": np.nan,
             "aucpr": np.nan,
             "noise_type": noise_type,
+            "split_rate_eln":split_rate_eln,
             "fit_time": np.nan,
             "inference_time": np.nan,
             "n_train": np.nan,
@@ -1116,6 +1125,16 @@ def main():
     )
 
     parser.add_argument(
+        "--split_rate_eln",
+        nargs="+",
+        type=float,
+        choices=[0.8,0.7],
+        default=[0.8],
+        help="为eln实验,加入纯净的有标签正常样本而划分的数据集比例，" \
+        "默认: 0.8(表示20%的纯净有标签正常样本可依赖参数eln加入训练),eln=0.0时不生效",
+    )
+
+    parser.add_argument(
         "--seed_list",
         nargs="+",
         type=int,
@@ -1202,10 +1221,11 @@ def main():
         flip_ar_list=args.flip_ar_list,
         target_for_unlabeled=args.target_for_unlabeled,
         noise_type=args.noise_type,
+        split_rate_eln=args.split_rate_eln,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
-        NO_RESUME=args.NO_RESUME,
+        NO_RESUME=args.NO_RESUME
     )
 
     # 运行实验

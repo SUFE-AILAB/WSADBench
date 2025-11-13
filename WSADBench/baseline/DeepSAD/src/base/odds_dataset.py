@@ -20,7 +20,7 @@ class ODDSDataset(Dataset):
     to also return the semi-supervised target as well as the index of a data sample.
     """
 
-    def __init__(self, data, train=True):
+    def __init__(self, data, train=True,batch_size=128):
         super(Dataset, self).__init__()
         self.train = train
 
@@ -30,6 +30,13 @@ class ODDSDataset(Dataset):
         else:
             self.data = torch.tensor(data['X_test'], dtype=torch.float32)
             self.targets = torch.tensor(data['y_test'], dtype=torch.int64)
+        
+        #设置重采样，样本数量不足1batch_size时进行重复采样
+        num_samples = self.data.shape[0]
+        if num_samples < batch_size:
+            repeat_times = (batch_size + num_samples - 1) // num_samples
+            self.data = self.data.repeat((repeat_times, *([1] * (self.data.dim() - 1))))[:batch_size]
+            self.targets = self.targets.repeat((repeat_times,))[:batch_size]
 
         # self.semi_targets = torch.zeros_like(self.targets)
         self.semi_targets = self.targets
