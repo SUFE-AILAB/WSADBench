@@ -1,3 +1,9 @@
+import os
+# 限制GPU
+# os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+# print("当前 CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES", "未设置"))
+
+
 import time
 import gc
 import argparse
@@ -5,7 +11,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
-import os
+
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -16,7 +22,6 @@ import torch
 import torch.multiprocessing as tmp
 from itertools import product
 from common_utils.argTypes import int_or_float
-
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -59,7 +64,7 @@ class ModelRegistry:
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
-            "PUMA":"WSADBench.baseline.PUMA.run.PUMA",
+            "PUMA": "WSADBench.baseline.PUMA.run.PUMA",
             "TabNet": "WSADBench.baseline.TabNet.run.TabNet",
         }
         return default_model_map.get(model_name, None)
@@ -69,24 +74,25 @@ class ExperimentRunner:
     """通用实验运行器，支持video和tabular数据集"""
 
     def __init__(
-        self,
-        models: List[str],
-        data_type: str,
-        n_jobs=1,
-        output_dir=None,
-        parameter_config_path=None,
-        datasets=None,
-        rla_list=None,
-        eln_list=None,
-        ru_list=None,
-        flip_nr_list=None,
-        flip_ar_list=None,
-        target_for_unlabeled=None,
-        noise_type=None,
-        seed_list=None,
-        gpu_list=None,
-        DEBUG=False,
-        NO_RESUME=False,
+            self,
+            models: List[str],
+            data_type: str,
+            n_jobs=1,
+            output_dir=None,
+            parameter_config_path=None,
+            datasets=None,
+            rla_list=None,
+            eln_list=None,
+            ru_list=None,
+            flip_nr_list=None,
+            flip_ar_list=None,
+            target_for_unlabeled=None,
+            noise_type=None,
+            seed_list=None,
+            gpu_list=None,
+            DEBUG=False,
+            NO_RESUME=False,
+            exp_note = None,
     ):
         """
         初始化运行器
@@ -116,6 +122,9 @@ class ExperimentRunner:
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
+            # OOD
+            "tabular_CV_by_ResNet18_OOD",
+            "tabular_CV_by_ResNet18_OOD_pic",
         ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
 
@@ -165,10 +174,11 @@ class ExperimentRunner:
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.ru_list = ru_list if ru_list is not None else [1.0]
-        self.flip_nr_list = flip_nr_list if flip_nr_list is not None else [0.01,0.05,0.1,0.25,0.5]
-        self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01,0.05,0.1,0.25,0.5]
+        self.flip_nr_list = flip_nr_list if flip_nr_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5]
+        self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
         self.noise_type = noise_type if noise_type is not None else None
+        self.exp_note = exp_note
 
         # 获取数据集列表
         if datasets is None:
@@ -325,6 +335,12 @@ class ExperimentRunner:
         elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
             datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
+        elif self.data_type == "tabular_CV_by_ResNet18_OOD":  # 含pic和emb两种
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD数据集")
+        elif self.data_type == "tabular_CV_by_ResNet18_OOD_pic":  # 含pic和emb两种
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD_pic"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD_pic数据集")
         return datasets
 
     @staticmethod
@@ -345,13 +361,21 @@ class ExperimentRunner:
         model_params = model_config.get("parameters", {}).copy()
         model_params.update(kwargs)
 
+        #  删除重复的 model_name
+        if "model_name" in model_params:
+            del model_params["model_name"]
+
         # 如果模型的 __init__ 方法有 input_dim 参数，且 feature_shape 不为 None，则更新 input_dim
         init_signature = inspect.signature(model_class.__init__)
         if "input_dim" in init_signature.parameters and feature_shape is not None:
             model_params["input_dim"] = feature_shape[-1]
-
+        # 检查构造函数里是否有 model_name 参数
+        if "model_name" in init_signature.parameters:
+            model = model_class(model_name=model_name, seed=seed, **model_params)
+        else:
+            model = model_class(seed=seed, **model_params)
         # 创建模型
-        return model_class(seed=seed, **model_params)
+        return model
 
     @staticmethod
     def _process_video_data(data):
@@ -474,11 +498,13 @@ class ExperimentRunner:
         else:
             df.to_json(result_file, orient="records", lines=True)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']}")
+        logger.debug(
+            f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']}")
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
-        
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed"]
+
+        main_keys = ["model", "dataset", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
+                     "target_for_unlabeled", "seed"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -505,9 +531,27 @@ class ExperimentRunner:
             except Exception as e:
                 logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
                 raise e
+        elif self.data_type == "tabular_CV_by_ResNet18_OOD":
+            try:
+                # self.datasets = ['aitex', 'carpet']
+                class_dict = { 'aitex': ['broken_pick','fuzzyball','weft_crack',],
+                               'carpet': ['color','cut','hole','metal_contamination','thread'],
+                                'elpv': ['mono',],
+                                'hyperkvasir': ['barretts','barretts-short-segment','esophagitis-b-d',],
+                                'mastcam': ['broken-rock','drill-hole','drt','dump-pile','float','meteorite','veins'],
+                                'metal_nut': ['bent','color','flip','scratch']}
+                rate_list = ["0", "25", "50", "75", "100"]
+                # self.datasets = [f"{ds}.{class_type}.{rate}" for ds in self.datasets for class_type in class_dict[ds] for rate in rate_list]
+
+            except Exception as e:
+                logger.error(f"处理OOD数据集失败: {e}")
+                raise e
+
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list))
+        experiment_params = list(
+            product(self.models, self.datasets, self.rla_list, self.eln_list, self.ru_list, self.flip_nr_list,
+                    self.flip_ar_list, self.target_for_unlabeled, self.seed_list, self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -562,9 +606,9 @@ class ExperimentRunner:
             # 使用torch.multiprocessing.Pool执行
             with tmp.Pool(self.n_jobs) as pool:
                 for result in tqdm(
-                    pool.imap(run_single_experiment_with_gpu, experiment_params_with_gpu),
-                    total=len(experiment_params_with_gpu),
-                    desc="运行实验",
+                        pool.imap(run_single_experiment_with_gpu, experiment_params_with_gpu),
+                        total=len(experiment_params_with_gpu),
+                        desc="运行实验",
                 ):
                     if result is not None:
                         results.append(result)
@@ -573,7 +617,7 @@ class ExperimentRunner:
         logger.info(f"完成 {len(results)} 个实验")
 
         # 生成汇总报告
-        self.generate_summary()
+        # self.generate_summary()
 
         return results
 
@@ -589,8 +633,12 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(
+            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio", "target_for_unlabeled",
+             "noise_type"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(
+            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio", "target_for_unlabeled",
+             "noise_type"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -601,8 +649,12 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的时间
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
-        dataset_time_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].mean()
-        dataset_time_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled"])[metric].std()
+        dataset_time_summary[f"{metric}_mean"] = df.groupby(
+            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
+             "target_for_unlabeled"])[metric].mean()
+        dataset_time_summary[f"{metric}_std"] = df.groupby(
+            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
+             "target_for_unlabeled"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -642,7 +694,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
 def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
-    dtype_dict = {"rla": "object", "eln": "object","ru":"object","flip_normal_ratio":"object","flip_abnormal_ratio":"object","target_for_unlabeled":"object","seed":"object"}
+    dtype_dict = {"rla": "object", "eln": "object", "ru": "object", "flip_normal_ratio": "object",
+                  "flip_abnormal_ratio": "object", "target_for_unlabeled": "object", "seed": "object"}
     if suffix == ".csv":
         df = pd.read_csv(result_file, dtype=dtype_dict)
     elif suffix in [".jsonl", ".json"]:
@@ -714,7 +767,9 @@ def generate_summary_only(output_dir):
 
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file,dtype={'rla':'object','eln':'object','ru':'object','flip_normal_ratio':'object','flip_abnormal_ratio':'object'})
+                    df = pd.read_csv(result_file, dtype={'rla': 'object', 'eln': 'object', 'ru': 'object',
+                                                         'flip_normal_ratio': 'object',
+                                                         'flip_abnormal_ratio': 'object'})
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
@@ -801,7 +856,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed = params
+    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, exp_note = params
 
     if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
         noise_type = "label_contamination"
@@ -811,11 +866,13 @@ def run_single_experiment_with_gpu(params_with_config):
     # 设置GPU环境
     if gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 分配到 GPU {gpu_id}")
+        logger.info(
+            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 分配到 GPU {gpu_id}")
     else:
         # CPU模式
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        logger.info(f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 使用 CPU 模式")
+        logger.info(
+            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 使用 CPU 模式")
 
     try:
         # 从配置中获取所需的组件
@@ -838,12 +895,14 @@ def run_single_experiment_with_gpu(params_with_config):
             noise_type=noise_type,
             at_least_one_labeled=True,
             shortage_mode="ignore",
-            data_type=data_type
+            data_type=data_type,
+            exp_note = exp_note,
         )
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type}) 没有标注异常，跳过")
+            logger.warning(
+                f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -899,6 +958,10 @@ def run_single_experiment_with_gpu(params_with_config):
                 data.get("vid_source_clips_num_test", None),
                 data_shape[1] if data_shape else None,
             ]
+        # 可视化
+        if has_param(model.fit, "emb_vis"):
+            train_input["emb_vis"] = data.get("emb_vis", None)
+
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -969,6 +1032,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.sum(data["y_test"]),
             "error": "",
             "data_type": data_type,
+            "exp_note": exp_note,
         }
 
         logger.info(
@@ -985,7 +1049,8 @@ def run_single_experiment_with_gpu(params_with_config):
     except Exception as e:
         if DEBUG:
             raise e
-        logger.error(f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): {str(e)}")
+        logger.error(
+            f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): {str(e)}")
         return {
             "model": model_name,
             "dataset": dataset_name,
@@ -1035,6 +1100,8 @@ def main():
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
+            "tabular_CV_by_ResNet18_OOD",
+            "tabular_CV_by_ResNet18_OOD_pic",
         ],
         required=True,
         default=["tabular_classical"],
@@ -1079,7 +1146,6 @@ def main():
         default=[1.0],
         help="无标签样本比例列表 (默认: 1.0)",
     )
-
 
     parser.add_argument(
         "--flip_nr_list",
@@ -1134,6 +1200,14 @@ def main():
         type=str,
         default=None,
         help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
+    )
+
+    parser.add_argument(
+        "--exp_note",
+        nargs="+",
+        type=str,
+        default=['None'],
+        help="实验备注，用于区分不同实验",
     )
 
     parser.add_argument(
@@ -1206,6 +1280,7 @@ def main():
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
         NO_RESUME=args.NO_RESUME,
+        exp_note = args.exp_note,
     )
 
     # 运行实验
@@ -1220,7 +1295,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 """
 使用示例:

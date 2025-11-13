@@ -230,8 +230,8 @@ class ActiveAD_trainer:
         test_auc, test_f1, test_score = None, None, None,
         torch.cuda.empty_cache()
         self.logger = None
-        self.contamination_rate = contamination
-        self.anomal_label = 0.5
+        # self.contamination_rate = contamination
+        # self.anomal_label = 0.5
         self.num_data = len(train_loader.dataset)
         K = int(query_num)  # for active learning
         self.batch_size = train_loader.batch_size
@@ -251,7 +251,10 @@ class ActiveAD_trainer:
             scores = self.compute_scores(train_loader.dataset)
             if self.query_method == 'kmeans':
                 embs = self.get_embs(train_loader.dataset)
-                active_rand_idx = kmeans_diverse(embs, K, labels = train_loader.dataset.labels)
+                # active_rand_idx = kmeans_diverse(embs, K, labels = train_loader.dataset.labels)
+                # 恢复成旧 的提问
+                print(f'恢复成旧 的提问')
+                active_rand_idx = kmeans_diverse_v1(embs, K,)
                 print("Assign K=%d true labels under kmeans++ strategy " % K)
             elif self.query_method == 'random':
                 active_rand_idx = torch.randperm(len(train_loader.dataset))[:K]
