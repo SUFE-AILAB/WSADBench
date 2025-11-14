@@ -502,7 +502,20 @@ class ExperimentRunner:
         else:
             df.to_json(result_file, orient="records", lines=True)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']},exp_note = {result['exp_note']}")
+        logger.debug(
+            f"保存 {model_name} 实验结果: "
+            f"{result.get('dataset')}, "
+            f"seed={result.get('seed')}, "
+            f"rla={result.get('rla')}, "
+            f"eln={result.get('eln')}, "
+            f"ru={result.get('ru')}, "
+            f"flip_normal_ratio={result.get('flip_normal_ratio')}, "
+            f"flip_abnormal_ratio={result.get('flip_abnormal_ratio')}, "
+            f"target_for_unlabeled={result.get('target_for_unlabeled')}, "
+            f"noise_type={result.get('noise_type')}, "
+            f"exp_note={result.get('exp_note', '')}"
+        )
+
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
@@ -635,8 +648,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln","exp_note"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln","exp_note"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -648,11 +661,9 @@ def generate_summary_statistics(df, model_stats, summary_file):
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
         dataset_time_summary[f"{metric}_mean"] = df.groupby(
-            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
-             "target_for_unlabeled"])[metric].mean()
+            ["dataset", "model", "rla"])[metric].mean()
         dataset_time_summary[f"{metric}_std"] = df.groupby(
-            ["dataset", "model", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
-             "target_for_unlabeled"])[metric].std()
+            ["dataset", "model", "rla"])[metric].std()
 
     # 按模型汇总的时间
     model_time_summary = {}
@@ -692,15 +703,36 @@ def generate_summary_statistics(df, model_stats, summary_file):
 def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
-    dtype_dict = {"rla": "object", "eln": "object", "ru": "object", "flip_normal_ratio": "object",
-                  "flip_abnormal_ratio": "object", "target_for_unlabeled": "object", "seed": "object"}
+
+    # 你希望的目标 dtype
+    target_object_cols = [
+        "rla", "eln", "ru",
+        "flip_normal_ratio", "flip_abnormal_ratio",
+        "target_for_unlabeled", "seed"
+    ]
+
+    # === 1. 读取文件 ===
     if suffix == ".csv":
-        df = pd.read_csv(result_file, dtype=dtype_dict)
+        df = pd.read_csv(result_file, dtype={col: 'object' for col in target_object_cols})
     elif suffix in [".jsonl", ".json"]:
-        df = pd.read_json(result_file, lines=True, dtype=dtype_dict)
+        # pd.read_json 不支持 dtype
+        df = pd.read_json(result_file, lines=True)
     else:
         raise ValueError(f"Unsupported file format: {suffix}")
+
+    # === 2. 对于 jsonl 读取的字段，再统一转 dtype ===
+    for col in target_object_cols:
+        if col in df.columns:
+            df[col] = df[col].astype("object")
+
+    # === 3. 自动处理不同模型结果字段不一致的情况 ===
+    # 缺失字段自动补 NaN
+    for col in target_object_cols:
+        if col not in df.columns:
+            df[col] = pd.NA
+
     return df
+
 
 
 def print_summary_statistics(df):
@@ -765,9 +797,7 @@ def generate_summary_only(output_dir):
 
             if result_file.exists():
                 try:
-                    df = pd.read_csv(result_file, dtype={'rla': 'object', 'eln': 'object', 'ru': 'object',
-                                                         'flip_normal_ratio': 'object',
-                                                         'flip_abnormal_ratio': 'object'})
+                    df = read_result_file(result_file)
                     all_results.append(df)
                     logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
                 except Exception as e:
@@ -780,6 +810,13 @@ def generate_summary_only(output_dir):
     # 合并所有结果
     combined_df = pd.concat(all_results, ignore_index=True)
     logger.info(f"合并了 {len(all_results)} 个结果文件，总共 {len(combined_df)} 个实验结果")
+
+    #清洗NATtype数据
+    target_object_cols = [
+        'fit_time', 'inference_time']
+    for col in target_object_cols:
+        if col in combined_df.columns:
+            combined_df[col] = pd.to_numeric(combined_df[col], errors="coerce")
 
     # 生成汇总统计
     summary_file = summary_dir / "summary.xlsx"
@@ -865,12 +902,12 @@ def run_single_experiment_with_gpu(params_with_config):
     if gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         logger.info(
-            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 分配到 GPU {gpu_id}")
+            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) 分配到 GPU {gpu_id}")
     else:
         # CPU模式
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         logger.info(
-            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type}) 使用 CPU 模式")
+            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) 使用 CPU 模式")
 
     try:
         # 从配置中获取所需的组件
@@ -900,7 +937,7 @@ def run_single_experiment_with_gpu(params_with_config):
 
         # 检查数据有效性
         if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},split_rate_eln = {split_rate_eln}) 没有标注异常，跳过")
+            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -1031,11 +1068,11 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.sum(data["y_test"]),
             "error": "",
             "data_type": data_type,
-            "exp_note": exp_note,
+            "exp_note": exp_note
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},split={split_rate_eln}): "
+            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
