@@ -21,6 +21,8 @@ def fit_ntl(
 ):
     # train_x: [num, feature_dim], y: [num, 1]
     # 生成query
+    # 计算污染率
+    rate = sum(train_semi_y)/(len(train_semi_y)- sum(train_semi_y))
     train_data = CustomDataset(torch.from_numpy(train_x).float(), train_semi_y)
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True,
                               drop_last=False)
@@ -29,7 +31,7 @@ def fit_ntl(
 
 
     trainer.train(train_loader=train_loader,
-                  contamination=0.1, query_num=query_num,
+                  contamination=rate, query_num=query_num,
                   optimizer=optimizer, scheduler=scheduler)
     return trainer
 
