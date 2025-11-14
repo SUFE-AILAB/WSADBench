@@ -635,8 +635,8 @@ def generate_summary_statistics(df, model_stats, summary_file):
     # 汇总的效果
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
-        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln"])[metric].mean()
-        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln"])[metric].std()
+        dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln","exp_note"])[metric].mean()
+        dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla","eln","ru","flip_normal_ratio","flip_abnormal_ratio","target_for_unlabeled","noise_type","split_rate_eln","exp_note"])[metric].std()
 
     # 按模型汇总的效果
     model_summary = {}
@@ -854,7 +854,7 @@ def run_single_experiment_with_gpu(params_with_config):
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla,eln,ru,flip_normal_ratio,flip_abnormal_ratio,target_for_unlabeled,seed,split_rate_eln, exp_note = params
+    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, split_rate_eln, exp_note = params
 
     if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
         noise_type = "label_contamination"
