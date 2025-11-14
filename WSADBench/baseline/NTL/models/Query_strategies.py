@@ -4,6 +4,28 @@ import torch
 from scipy import stats
 from scipy.spatial.distance import cdist
 
+
+def kmeans_diverse_v1(embs, K,tau=0.01):
+    idx_active = []
+    dist_matrix = torch.cdist(embs,embs,p=2).cpu().numpy()
+    dist_matrix = (dist_matrix-dist_matrix.min())/(dist_matrix.max()-dist_matrix.min())
+    dist_matrix = dist_matrix.astype(np.float64)
+    dist_matrix = np.exp(dist_matrix/tau)
+    idx_ = np.argmin(np.mean(dist_matrix,0))
+    # idx_ = np.random.choice(np.arange(embs.shape[0]),1)[0]
+
+    idx_active.append(idx_)
+
+    while len(idx_active) < K:
+        p = dist_matrix[idx_active].min(0)
+        p = p/p.sum()
+        customDist = stats.rv_discrete(name='custm', values=(np.arange(len(p)), p))
+        idx_ = customDist.rvs(size=1)[0]
+        while idx_ in idx_active: idx_ = customDist.rvs(size=1)[0]
+        idx_active.append(idx_)
+
+    return idx_active
+
 def kmeans_diverse(embs, K,tau=0.01, labels=None):  # 没有label
     pos_indices = np.where(labels == 1)[0]  # 找出 label=1 的索引  异常是一模一样的？
     normal_indices = np.where(labels == 0)[0]  # 找出 label=0 的索引
