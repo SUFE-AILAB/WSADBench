@@ -963,7 +963,7 @@ class DataGenerator:
             # 原始包索引
             bag_indices = np.arange(X.shape[0])  # 为tabular_inexact增加
             # spliting the current data to the training set and testing set   目前为包形式，增加索引记录
-            X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(  # 7比3划分
+            X_train, X_test, y_train, y_test, bag_idx_train, bag_idx_test = train_test_split(  # 7比3划分
                 X, y, bag_indices, test_size=self.test_size, shuffle=True, stratify=y
             )
             y_test_gt_idx = None
@@ -971,7 +971,7 @@ class DataGenerator:
             if X_test.ndim == 3:
                 n_samples = X_test.shape[1]
                 # 获得X_test实例级样本索引
-                y_test_gt_idx = torch.cat([torch.arange(i * n_samples, (i + 1) * n_samples) for i in idx_test])
+                y_test_gt_idx = torch.cat([torch.arange(i * n_samples, (i + 1) * n_samples) for i in bag_idx_test])
                 y_test_gt = y_inst_gt[y_test_gt_idx]
 
             if noise_type is None:
@@ -1172,10 +1172,12 @@ class DataGenerator:
             "y_train": y_train,
             "X_test": X_test,
             "y_test": y_test,
-            "y_test_idx": idx_test,
+            "y_test_idx": bag_idx_test,
             "y_test_gt_idx": y_test_gt_idx,
             "y_test_gt": y_test_gt,
-            "mask": mask
+            "mask": mask,
+            "bag_info_train":bag_idx_train,
+            "bag_info_test":bag_idx_test
         }
 
         if data is not None and isinstance(data, dict):

@@ -1,0 +1,20 @@
+# DualMGAN模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.DualMGAN.run.DualMGAN
+
+# 模型参数
+parameters:
+  k_means: 10
+  max_iter_MGAOS: 2000 # 2000
+  max_iter_MGAAL: 1000  # 1000
+  lr_sg: 0.0001
+  lr_sd: 0.01
+  lr_d: 0.001
+  decay: 0.000001
+  batch_size: 1000
+  momentum: 0.9
+  nnr_MGAOS: 0.4
+  nnr_MGAAL: 0.2
+  verbose: true

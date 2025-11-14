@@ -1,0 +1,24 @@
+# RoSAS模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.RoSAS.run.RoSAS
+
+# 模型参数
+parameters:
+  # 训练参数
+  epochs: 200
+  batch_size: 64
+  lr: 0.005
+  
+  # 模型架构参数
+  n_emb: 128
+  margin: 2.0
+  alpha: 0.5
+  beta: 1.0
+  T: 2
+  k: 2
+
+  # 其他参数
+  score_loss: "smooth"
+  verbose: true

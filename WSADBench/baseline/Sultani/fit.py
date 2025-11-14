@@ -104,6 +104,27 @@ def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_i
     # np.save("frame_label/xd_frame_gt.npy", frame_truth)
     return frame_scores, frame_truth
 
+def _process_tabular_scores(scores, data_shape, data):
+        """处理tabular_inexact分数的特殊逻辑：从bag级别还原到样本级别"""
+        n_bags, n_samples = data_shape  # 取出 n_bags 和 n_samples
+
+        # 平均每个样本，获得每个袋的分数
+        scores = scores.reshape(n_bags, n_samples)
+        scores = np.mean(scores, axis=1)
+
+        # 还原 bag 级别的 score 为样本级别的 score
+        y_test_idx = data["y_test_idx"]
+        y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+
+        sample_truth = y_test_gt
+        sample_scores = scores.repeat(n_samples)
+        # 对齐长度
+        common_length = min(len(sample_truth), len(sample_scores))
+        sample_scores = sample_scores[:common_length]
+        sample_truth = sample_truth[:common_length]
+
+        return sample_scores, sample_truth
+
 def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
                        verbose=True, normal_loader=None, anomaly_loader=None):
     """
@@ -135,7 +156,7 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
         print(f"开始训练Sultani模型，共{epochs}轮...")
         print(f"设备: {device}")
         print(f"稀疏性权重: {sparsity_weight}, 平滑性权重: {smoothness_weight}")
-    X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
+    # X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     best_epoch = -1
     best_auc = 0.0
     best_ap = 0
@@ -202,10 +223,15 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
                 gt = get_gt(len(prob))
                 test_auc_v2 = roc_auc_score(gt, prob)
                 test_ap_v2 = average_precision_score(gt, prob)
+                #为适配tabular_inexact数据集修改
+                n_bags, n_samples,_dim = X_test.shape
+                data_shape = (n_bags, n_samples)
 
-                frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt,
-                                                                  y_test_gt_idx,
-                                                                  num_clip_frames)
+                # frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt,
+                #                                                   y_test_gt_idx,
+                #                                                   num_clip_frames)
+
+                frame_scores, frame_truth = _process_tabular_scores(scores, data_shape, X_test)
                 test_auc = roc_auc_score(frame_truth, frame_scores)
                 test_ap = average_precision_score(frame_truth, frame_scores)
                 if best_auc < test_auc:

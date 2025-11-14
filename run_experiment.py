@@ -439,11 +439,20 @@ class ExperimentRunner:
         # 训练数据 reshape
         n_bags, n_samples, _dim = data["X_train"].shape
         data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
+        #包标签广播为实例级标签
         data["y_train"] = data["y_train"].repeat(n_samples)
+
+        # 保留包ID信息并扩展到samples
+        if "bag_info_train" in data:
+            data["bag_info_train"] = data["bag_info_train"].repeat(n_samples)
 
         # 测试数据 reshape
         n_bags, n_samples, _dim = data["X_test"].shape
         data["X_test"] = data["X_test"].reshape(n_bags * n_samples, _dim)
+
+        # 保留包ID信息并扩展到samples
+        if "bag_info_test" in data:
+            data["bag_info_test"] = data["bag_info_test"].repeat(n_samples)
 
         return data, (n_bags, n_samples)
 
@@ -704,7 +713,7 @@ def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
 
-    # 你希望的目标 dtype
+    # 目标 dtype:object
     target_object_cols = [
         "rla", "eln", "ru",
         "flip_normal_ratio", "flip_abnormal_ratio",
