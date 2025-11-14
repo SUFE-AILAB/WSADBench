@@ -393,7 +393,8 @@ class ZhongGCNAD:
         """
         assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."  # 没有类别标签
         clips_num = X.shape[0] // crops_num
-        
+        #为tabular_inexact添加视频ID信息
+        vid_info = np.arange(len(X))
         # 重塑X并计算每个clip的平均特征
         X_reshaped = X.reshape(clips_num, crops_num, -1)
         X_clips = X_reshaped.mean(axis=1)

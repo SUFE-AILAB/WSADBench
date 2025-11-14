@@ -1,0 +1,11 @@
+# AABiGAN模型配置文件
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.FEAWAD.run.FEAWAD
+
+# 模型参数
+parameters: {}
+
+# 其他参数
+verbose: true
