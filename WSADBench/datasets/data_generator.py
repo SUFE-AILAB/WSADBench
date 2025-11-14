@@ -293,6 +293,7 @@ class DataGenerator:
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
             data_type=None,
+            split_rate_eln: float = 0.8,
             exp_note = None,
             # seg_num=None,
             # pretrain_model=None,
@@ -309,7 +310,7 @@ class DataGenerator:
 
         # set seed for reproducible results
         self.utils.set_seed(self.seed)
-        if '_' in data_type:
+        if '_' in data_type and 'inexact' not in data_type:
             data_type = data_type.split('_', 1)[1]
 
         data = None
@@ -1013,75 +1014,140 @@ class DataGenerator:
                     X_train = X_train_scaled.reshape(n_bags, n_samples, n_features)
                     X_test = X_test_scaled.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
 
-        # idx of normal samples and unlabeled/labeled anomalies
-        idx_normal = np.where(y_train == 0)[0]
-        idx_anomaly = np.where(y_train == 1)[0]
 
-        if type(la) == float:
-            if at_least_one_labeled:
-                idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
-            else:
-                idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
-        elif type(la) == int:
-            if la > len(idx_anomaly):
-                if shortage_mode == "raise":
-                    raise AssertionError(
-                        f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
-                        f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
-                    )
-                elif shortage_mode == "ignore":
-                    idx_labeled_anomaly = idx_anomaly
+        if eln == 0.0:
+            # idx of normal samples and unlabeled/labeled anomalies
+            idx_normal = np.where(y_train == 0)[0]
+            idx_anomaly = np.where(y_train == 1)[0]
+
+            if type(la) == float:
+                if at_least_one_labeled:
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
                 else:
-                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
+            elif type(la) == int:
+                if la > len(idx_anomaly):
+                    if shortage_mode == "raise":
+                        raise AssertionError(
+                            f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
+                            f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                        )
+                    elif shortage_mode == "ignore":
+                        idx_labeled_anomaly = idx_anomaly
+                    else:
+                        raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                else:
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
             else:
-                idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
+                raise NotImplementedError
+            
+            idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
+            # ---- 分层采样逻辑 ----
+            n_normal = len(idx_normal)
+            n_unlabeled_anom = len(idx_unlabeled_anomaly)
+            total_unlabeled = n_normal + n_unlabeled_anom
+
+            # 计算每类比例
+            p_normal = n_normal / total_unlabeled
+            p_unlabeled_anom = n_unlabeled_anom / total_unlabeled
+
+            #对无标签的异常样本和正常样本进行分层采用；控制unlabeled数据使用比例
+            if type(ru) == float:
+                idx_using_normal = np.random.choice(idx_normal, ceil(ru * len(idx_normal)), replace=False)
+                idx_using_unlabeled_anom = np.random.choice(idx_unlabeled_anomaly, ceil(ru * len(idx_unlabeled_anomaly)), replace=False)
+
+            elif type(ru) == int:
+                if ru > total_unlabeled:
+                    if shortage_mode == "raise":
+                        raise AssertionError(
+                            f"the number of using unlabeled samples are greater than the total unlabeled samples: {len(idx_normal)} !"
+                            f'Please set a smaller ru or change the shortage_mode to "ignore" or "duplicate".'
+                        )
+                    elif shortage_mode == "ignore":
+                        idx_using_unlabeled_anom = idx_unlabeled_anomaly
+                        idx_using_normal = idx_normal
+                    else:
+                        raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                else:
+                    idx_using_unlabeled_anom = np.random.choice(idx_unlabeled_anomaly, ceil(min(p_unlabeled_anom * ru, len(idx_unlabeled_anomaly))), replace=False)
+                    idx_using_normal = np.random.choice(idx_normal, ru - len(idx_using_unlabeled_anom), replace=False)
+            
+            idx_using_unlabeled = np.append(idx_using_normal, idx_using_unlabeled_anom)
+            final_indices = np.concatenate([idx_labeled_anomaly,idx_using_unlabeled])
+        
         else:
-            raise NotImplementedError
+            # idx of normal samples and unlabeled/labeled anomalies
+            idx_normal = np.where(y_train == 0)[0]
+            idx_anomaly = np.where(y_train == 1)[0]
 
-        if type(ru) == float:
-            idx_using_normal = np.random.choice(idx_normal, ceil(ru * len(idx_normal)), replace=False)
-        elif type(ru) == int:
-            if ru > len(idx_normal):
-                if shortage_mode == "raise":
-                    raise AssertionError(
-                        f"the number of using unlabeled samples are greater than the total unlabeled samples: {len(idx_normal)} !"
-                        f'Please set a smaller ru or change the shortage_mode to "ignore" or "duplicate".'
-                    )
-                elif shortage_mode == "ignore":
-                    idx_using_normal = idx_normal
+            # #划分出一部分正常样本，为后续作为有标签正常样本加入训练使用  #废弃的eln_setting
+            # n_split_normal = int(split_rate_eln * len(idx_normal))
+            # n_split_anomaly = int(split_rate_eln * len(idx_anomaly))
+            # idx_normal1, idx_normal2 = idx_normal[:n_split_normal], idx_normal[n_split_normal:]
+            # idx_anomaly1, idx_anomaly2 = idx_anomaly[:n_split_anomaly], idx_anomaly[n_split_anomaly:]
+
+            if type(la) == float:
+                if at_least_one_labeled:
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
                 else:
-                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
-            else:
-                idx_using_normal = np.random.choice(idx_normal, ru, replace=False)
-
-        if type(eln) == float:
-            if at_least_one_labeled:
-                idx_labeled_normal = np.random.choice(idx_using_normal, ceil(eln * len(idx_labeled_anomaly)),
-                                                      replace=False)
-            else:
-                idx_labeled_normal = np.random.choice(idx_using_normal, int(eln * len(idx_labeled_anomaly)),
-                                                      replace=False)
-        elif type(eln) == int:
-            if eln > len(idx_using_normal):
-                if shortage_mode == "raise":
-                    raise AssertionError(
-                        f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
-                        f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
-                    )
-                elif shortage_mode == "ignore":
-                    idx_labeled_normal = idx_using_normal
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
+            elif type(la) == int:
+                if la > len(idx_anomaly):
+                    if shortage_mode == "raise":
+                        raise AssertionError(
+                            f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
+                            f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                        )
+                    elif shortage_mode == "ignore":
+                        idx_labeled_anomaly = idx_anomaly
+                    else:
+                        raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
                 else:
-                    raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
             else:
-                idx_labeled_normal = np.random.choice(idx_using_normal, eln, replace=False)
-        else:
-            raise NotImplementedError
+                raise NotImplementedError
 
-        idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
-        idx_unlabeled_normal = np.setdiff1d(idx_using_normal, idx_labeled_normal)
-        # unlabel data = normal data + unlabeled anomalies (which is considered as contamination)
-        idx_unlabeled = np.append(idx_unlabeled_normal, idx_unlabeled_anomaly)
-        final_indices = np.concatenate([idx_labeled_anomaly, idx_labeled_normal, idx_unlabeled])
+            if type(eln) == float:
+                if at_least_one_labeled:
+                    if len(idx_normal) < ceil(eln * len(idx_labeled_anomaly)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_labeled_anomaly))},using resample.")
+                        shortage = ceil(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                        extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                        idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                    else:
+                        idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+                else:
+                    if len(idx_normal) < int(eln * len(idx_labeled_anomaly)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_labeled_anomaly))},using resample.。")
+                        shortage = int(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                        extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                        idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                    else:
+                        idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+
+            elif type(eln) == int:
+                if eln > len(idx_normal):
+                    if shortage_mode == "raise":
+                        raise AssertionError(
+                            f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
+                            f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                        )
+                    elif shortage_mode == "ignore":
+                        shortage = eln - len(idx_normal)
+                        extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                        idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                    else:
+                        raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                else:
+                    idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
+            else:
+                raise NotImplementedError
+            
+            idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
+            idx_unlabeled_normal = np.setdiff1d(idx_normal,idx_labeled_normal)
+            idx_using_unlabeled = np.append(idx_unlabeled_anomaly,idx_unlabeled_normal)
+            final_indices = np.concatenate([idx_labeled_anomaly,idx_labeled_normal,idx_using_unlabeled])
+
 
         # 根据 final_indices 重新取 X_train / y_train
         X_train = X_train[final_indices]
@@ -1090,12 +1156,13 @@ class DataGenerator:
         # 构建 mask 实现eln相关功能
         mask = np.ones_like(y_train, dtype=int)
         # unlabeled 样本 mask=0
-        mask[np.isin(final_indices, idx_unlabeled)] = 0
+        mask[np.isin(final_indices, idx_using_unlabeled)] = 0  
         # 保证 labeled anomaly 的标签是 1
         y_train[np.isin(final_indices, idx_labeled_anomaly)] = 1
 
         if target_for_unlabeled == "fill_unlabel_0":
             y_train[mask == 0] = 0  # 无标签样本的标签为0
+        
         elif target_for_unlabeled == "delete_sample":  # 只使用有标签样本
             X_train = X_train[mask == 1]
             y_train = y_train[mask == 1]

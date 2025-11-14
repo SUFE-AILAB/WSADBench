@@ -25,6 +25,10 @@ class AETrainer(BaseTrainer):
 
     def train(self, dataset: BaseADDataset, ae_net: BaseNet):
         logger = logging.getLogger()
+        
+        # if len(dataset.data) < self.batch_size:
+        #     repeat_times = (self.batch_size + len(dataset.data) - 1) // len(dataset.data)
+        #     dataset.data = dataset.data.repeat((repeat_times, *([1] * (dataset.data.dim() - 1))))[:self.batch_size]
 
         # Get train data loader
         train_loader = dataset.loaders(batch_size=self.batch_size, num_workers=self.n_jobs_dataloader)
