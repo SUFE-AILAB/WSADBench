@@ -502,11 +502,11 @@ class ExperimentRunner:
         else:
             df.to_json(result_file, orient="records", lines=True)
 
-        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']},split_rate_eln = {result['split_rate_eln']}")
+        logger.debug(f"保存 {model_name} 实验结果: {result['dataset']}, seed={result['seed']}, rla={result['rla']},eln={result['eln']},ru={result['ru']},flip_normal_ratio={result['flip_normal_ratio']},flip_abnormal_ratio={result['flip_abnormal_ratio']},target_for_unlabeled={result['target_for_unlabeled']}, noise_type={result['noise_type']},exp_note = {result['exp_note']}")
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","split_rate_eln"]
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","split_rate_eln","exp_note"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
