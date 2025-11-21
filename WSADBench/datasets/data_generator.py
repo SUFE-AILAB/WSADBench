@@ -240,7 +240,6 @@ class DataGenerator:
         """
         # 先转整型，防止后续下游 safe-casting 报错
         y_noisy = y.astype(np.int64, copy=True)
-        n_samples = len(y)
 
         # 找到正常和异常样本索引
         normal_idx = np.where(y == 0)[0]
@@ -1109,21 +1108,21 @@ class DataGenerator:
 
             if type(eln) == float:
                 if at_least_one_labeled:
-                    if len(idx_normal) < ceil(eln * len(idx_labeled_anomaly)):
-                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_labeled_anomaly))},using resample.")
-                        shortage = ceil(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                    if len(idx_normal) < ceil(eln * len(idx_normal)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_normal))},using resample.")
+                        shortage = ceil(eln * len(idx_normal)) - len(idx_normal)
                         extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
                         idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
                     else:
-                        idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+                        idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_normal)), replace=False)
                 else:
-                    if len(idx_normal) < int(eln * len(idx_labeled_anomaly)):
-                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_labeled_anomaly))},using resample.。")
-                        shortage = int(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                    if len(idx_normal) < int(eln * len(idx_normal)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_normal))},using resample.。")
+                        shortage = int(eln * len(idx_normal)) - len(idx_normal)
                         extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
                         idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
                     else:
-                        idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+                        idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_normal)), replace=False)
 
             elif type(eln) == int:
                 if eln > len(idx_normal):
@@ -1177,7 +1176,9 @@ class DataGenerator:
             "y_test_gt": y_test_gt,
             "mask": mask,
             "bag_info_train":bag_idx_train,
-            "bag_info_test":bag_idx_test
+            "bag_info_test":bag_idx_test,
+            "NUM_FRAMES":n_samples     #这里是tabular_inexact的每个包内样本数，为了减少代码改动，沿用这个名字,tabular_inexact专用
+
         }
 
         if data is not None and isinstance(data, dict):

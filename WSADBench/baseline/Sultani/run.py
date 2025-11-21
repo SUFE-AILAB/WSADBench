@@ -156,6 +156,7 @@ class Sultani:
                              batch_size=self.batch_size,
                              device=self.device,
                              verbose=self.verbose,
+                             seg=self.segments_per_video,
                              clip_num=vid_source_clips_num, crops_num=crops_num)
         self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
                                          fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],

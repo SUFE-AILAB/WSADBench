@@ -66,6 +66,7 @@ class ModelRegistry:
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
             "PUMA": "WSADBench.baseline.PUMA.run.PUMA",
             "TabNet": "WSADBench.baseline.TabNet.run.TabNet",
+            "DualMGAN": "WSADBench.baseline.DualMGAN.run.DualMGAN",
         }
         return default_model_map.get(model_name, None)
 
@@ -441,6 +442,7 @@ class ExperimentRunner:
         data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
         #包标签广播为实例级标签
         data["y_train"] = data["y_train"].repeat(n_samples)
+        data["mask"] = data["mask"].repeat(n_samples)   #掩码必须同时广播
 
         # 保留包ID信息并扩展到samples
         if "bag_info_train" in data:
@@ -596,7 +598,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"eln_setting下的数据划分比例(若eln为0.0时，不起作用): {self.split_rate_eln}")
+        logger.info(f"eln_setting下的数据划分比例(目前不起作用): {self.split_rate_eln}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -820,6 +822,12 @@ def generate_summary_only(output_dir):
     combined_df = pd.concat(all_results, ignore_index=True)
     logger.info(f"合并了 {len(all_results)} 个结果文件，总共 {len(combined_df)} 个实验结果")
 
+    # 去重
+    before = len(combined_df)
+    combined_df = combined_df.drop_duplicates()
+    after = len(combined_df)
+    logger.info(f"去重完成：删除了 {before - after} 条重复记录，剩余 {after} 条记录")
+
     #清洗NATtype数据
     target_object_cols = [
         'fit_time', 'inference_time']
@@ -978,6 +986,8 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["y_train"] = data["y_train"]
         if has_param(model.fit, "mask"):
             train_input["mask"] = data["mask"]
+        if has_param(model.fit, "bags_info"):
+            train_input["bags_info"] = data.get("bag_info_train", None)
         if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
@@ -1118,6 +1128,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.nan,
             "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
+            "exp_note": exp_note
         }
 
 
@@ -1234,7 +1245,7 @@ def main():
         choices=[0.8,0.7],
         default=[0.8],
         help="为eln实验,加入纯净的有标签正常样本而划分的数据集比例，" \
-        "默认: 0.8(表示20%的纯净有标签正常样本可依赖参数eln加入训练),eln=0.0时不生效",
+        "默认: 0.8(表示20%的纯净有标签正常样本可依赖参数eln加入训练),该参数目前不生效",
     )
 
     parser.add_argument(

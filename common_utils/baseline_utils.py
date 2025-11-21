@@ -99,7 +99,7 @@ class VideoDataset(Dataset):
             # return feature
             divided_features = []
             for feature in self.features[idx]:
-                feature = process_feat(feature, 32)  # divide a video into 32 segments
+                feature = process_feat(feature, self.seg)  # divide a video into 32 segments
                 divided_features.append(feature)
             divided_features = np.array(divided_features, dtype=np.float32)
             return divided_features
@@ -177,46 +177,60 @@ class VideoDataset_VadClip(Dataset):
             return feat, self.vid_kind[idx], self.clip_num[idx]
 
 def fit_utils(X_train, y_train, model, optimizer, epochs, batch_size, device,X_test,trainer,
-                      verbose=True, clip_num=None,  crops_num=None,   # 通用参数
+                      verbose=True, seg=None,clip_num=None,  crops_num=None,   # 通用参数,加入seg参数
                ):  #  其他参数
 
     """
         MGFN主训练函数，支持crops数据格式
         """
     model.train()
-    ncrop = crops_num
-    clip_num = clip_num.values()
-    if len(clip_num) * 32 * ncrop == X_train.shape[0]:
-        print('32 seg')
-        clip_num = [32 for i in range(len(clip_num))]  # 32 seg 版
-        seg = 32
-    elif len(clip_num) * 200 * ncrop == X_train.shape[0]:
-        print('200 seg')
-        clip_num = [200 for i in range(len(clip_num))]  # 32 seg 版
-        seg = 200
-    else:
-        print('变长seg')
-        seg = 32
+    
+    
+
+    #原版，原功能可进行seg自动划分为32或200
+    # ncrop = crops_num 
+    # clip_num = clip_num.values()
+    # if len(clip_num) * 32 * ncrop == X_train.shape[0]:
+    #     print('32 seg')
+    #     clip_num = [32 for i in range(len(clip_num))]  # 32 seg 版
+    #     seg = 32
+    # elif len(clip_num) * 200 * ncrop == X_train.shape[0]:
+    #     print('200 seg')
+    #     clip_num = [200 for i in range(len(clip_num))]  # 32 seg 版
+    #     seg = 200
+    # else:
+    #     print('变长seg')
+    #     seg = 32
     # seg = trainer.seg  # 32表示32seg
+
+    # feature = trainer.input_dim  # 使用channels作为特征维度
+
+    # def split_by_seg_list(X, seg_list, feature):
+    #     X = X.reshape(-1, ncrop, feature)  # [seg, crop:10, 2048]
+    #     segments = []
+    #     start = 0
+    #     for seg_len in seg_list:
+    #         end = start + seg_len
+    #         for i in range(ncrop):
+    #             segment = X[start:end, i]  # shape: [seg_len, 2048]
+    #             segments.append(segment)
+    #         start = end
+    #     return segments
+
+    # X_train = split_by_seg_list(X_train, clip_num, feature)  # (16100, seg, 2048)
+    # y_train = split_by_seg_list(y_train, clip_num, 1)  # 16100个(seg, 1)(mask)
+    # y_train = [int(item[0, 0]) for item in y_train]  # 16100个0、1标签list
+
+    #为tabular_inexact数据集修改
+    _, data_shape, y_test_idx, y_test_gt, y_test_gt_idx, n_samples = X_test  # 拆包
+
     feature = trainer.input_dim  # 使用channels作为特征维度
 
-    def split_by_seg_list(X, seg_list, feature):
-        X = X.reshape(-1, ncrop, feature)  # [seg, crop:10, 2048]
-        segments = []
-        start = 0
-        for seg_len in seg_list:
-            end = start + seg_len
-            for i in range(ncrop):
-                segment = X[start:end, i]  # shape: [seg_len, 2048]
-                segments.append(segment)
-            start = end
-        return segments
+    seg = n_samples  # 每个bag的样本数作为seg长度，重赋值
+    X_train = X_train.reshape(-1,n_samples, feature) # (n_bags*n_samples, feature) -> (n_bags, n_samples, feature)
+    y_train = y_train[::n_samples]  # 每个bag的标签           #end
 
-    X_train = split_by_seg_list(X_train, clip_num, feature)  # (16100, seg, 2048)
-    y_train = split_by_seg_list(y_train, clip_num, 1)  # 16100个(seg, 1)(mask)
-    y_train = [int(item[0, 0]) for item in y_train]  # 16100个0、1标签list
-
-    def group_into_crops(X_videos, crop_size=10):
+    def group_into_crops(X_videos, crop_size=1):  #原版为crop_size=10
         grouped = []
         for i in range(0, len(X_videos), crop_size):
             batch = X_videos[i:i + crop_size]
@@ -225,8 +239,14 @@ def fit_utils(X_train, y_train, model, optimizer, epochs, batch_size, device,X_t
                 grouped.append(crop)
         return grouped
 
-    X_normal_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 0])
-    X_anomaly_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 1])
+    # X_normal_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 0])
+    # X_anomaly_videos = group_into_crops([X_train[i] for i in range(len(X_train)) if y_train[i] == 1])
+    #为tabular_inexact数据修改
+    X_normal_videos = [np.expand_dims(X_train[i],0) for i in range(len(X_train)) if y_train[i] == 0]  #扩展一个维度，替代group_into_crops产生的维度
+    X_anomaly_videos = [np.expand_dims(X_train[i],0) for i in range(len(X_train)) if y_train[i] == 1]   #end
+
+
+
     def balance_video_samples(normal_videos, anomaly_videos):
         """
         平衡正常和异常视频的数量，使用均匀采样
