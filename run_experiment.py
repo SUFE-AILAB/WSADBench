@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
-
+from sklearn.model_selection import KFold
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -30,7 +30,10 @@ from WSADBench.datasets.data_generator import DataGenerator
 from WSADBench.myutils import Utils, import_class
 import resource
 import inspect
-
+import cleanlab
+from cleanlab import Datalab
+from cleanlab.classification import CleanLearning
+from cleanlab.filter import find_label_issues
 
 class ModelRegistry:
     """模型注册器，用于管理和创建不同的模型"""
@@ -93,7 +96,7 @@ class ExperimentRunner:
         gpu_list=None,
         DEBUG=False,
         NO_RESUME=False,
-        split_rate_eln=None,
+        is_cleanlab=False,
         exp_note = None,
     ):
         """
@@ -112,7 +115,7 @@ class ExperimentRunner:
             flip_nr_list: 正常样本错误标注比例列表
             flip_ar_list: 异常样本错误标注比例列表
             seed_list: 随机种子列表
-            split_rate_eln: 对数据集的划分（为了eln功能扩展）
+            is_clean_lab: 是否开启数据噪声清洗功能，使用cleanlab库
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
@@ -181,7 +184,7 @@ class ExperimentRunner:
         self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
         self.noise_type = noise_type if noise_type is not None else None
-        self.split_rate_eln = split_rate_eln if split_rate_eln is not None else 0.8
+        self.is_cleanlab = is_cleanlab
         self.exp_note = exp_note
 
         # 获取数据集列表
@@ -210,7 +213,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"eln_setting下的数据划分比例(eln为0.0时不生效): {self.split_rate_eln}")
+        logger.info(f"是否开启数据噪声清洗功能: {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -523,6 +526,7 @@ class ExperimentRunner:
             f"flip_normal_ratio={result.get('flip_normal_ratio')}, "
             f"flip_abnormal_ratio={result.get('flip_abnormal_ratio')}, "
             f"target_for_unlabeled={result.get('target_for_unlabeled')}, "
+            f"is_cleanlab={result.get('is_cleanlab')}, "
             f"noise_type={result.get('noise_type')}, "
             f"exp_note={result.get('exp_note', '')}"
         )
@@ -530,7 +534,7 @@ class ExperimentRunner:
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","split_rate_eln","exp_note"]
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -576,7 +580,7 @@ class ExperimentRunner:
 
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.split_rate_eln, self.exp_note))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab, self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -598,7 +602,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"eln_setting下的数据划分比例(目前不起作用): {self.split_rate_eln}")
+        logger.info(f"是否开启数据噪声清洗功能 {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -901,14 +905,31 @@ class GPUManager:
             tasks_per_gpu[gpu_id] = tasks_per_gpu.get(gpu_id, 0) + 1
 
         return f"GPU分配: {dict(sorted(tasks_per_gpu.items()))}"
+    
+#为适配cleanlab添加包装类
+class CleanlabWSADWrapper:
+    def __init__(self, model):
+        self.model = model
 
+    def fit(self, X, y):
+        # 你自己的训练逻辑
+        self.model.train_loop(X, y)
+        return self
+
+    def predict_proba(self, X):
+        logits = self.model.predict_score(X)   # 或 model.forward
+        probs = torch.softmax(logits, dim=-1)
+        return probs.detach().cpu().numpy()
+
+    def predict(self, X):
+        return self.predict_proba(X).argmax(axis=1)
 
 def run_single_experiment_with_gpu(params_with_config):
     """
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, split_rate_eln, exp_note = params
+    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, is_cleanlab, exp_note = params
 
     if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
         noise_type = "label_contamination"
@@ -948,7 +969,6 @@ def run_single_experiment_with_gpu(params_with_config):
             at_least_one_labeled=True,
             shortage_mode="ignore",
             data_type=data_type,
-            split_rate_eln=split_rate_eln,
             exp_note = exp_note
         )
 
@@ -1041,6 +1061,64 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(pred_func, "vid_source_clips_num"):
             test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
 
+        if is_cleanlab == "true":
+            print("启用 CleanLearning 进行数据清洗...")
+            if "X_train" in train_input:
+                X, y = train_input["X_train"], train_input["y_train"]
+            else:
+                X, y = train_input["X"], train_input["y"]
+            kf = KFold(n_splits=5, shuffle=True)
+            pred_probs = np.zeros((len(X),len(np.unique(y))))
+            for train_idx, valid_idx in kf.split(X):
+                model.fit(X[train_idx], y[train_idx])
+                probs = pred_func(X[valid_idx])     #这块可能会报错
+
+                # --- 统一转换为 (N,2) 的概率矩阵 ---
+                if probs.ndim == 1:
+                    # probs 是 (N,), 只有一个 score
+                    # softmax([0, score]) 的等价形式
+                    logits = np.column_stack([np.zeros_like(probs), probs])   # (N,2)
+
+                    # softmax
+                    e = np.exp(logits - logits.max(axis=1, keepdims=True))
+                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
+
+                elif probs.ndim == 2 and probs.shape[1] ==1:
+                    #展平为1维
+                    probs = probs.flatten()
+                    logits = np.column_stack([np.zeros_like(probs), probs])   # (N,2)
+
+                    # softmax
+                    e = np.exp(logits - logits.max(axis=1, keepdims=True))
+                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
+
+                elif probs.ndim == 2 and probs.shape[1] == 2:
+                    # probs 已经是 (N,2) logits
+                    e = np.exp(probs - probs.max(axis=1, keepdims=True))
+                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
+
+                else:
+                    raise ValueError(
+                        f"pred_func 输出形状 {probs.shape} 不符合二分类概率转换要求"
+                    )
+
+                pred_probs[valid_idx] = probs
+
+            #找到噪声样本索引
+            issues = cleanlab.filter.find_label_issues(y, pred_probs)
+            #移除噪声样本
+            issues = np.array(issues)
+            # 噪声样本
+            noise_idx = np.where(issues)[0]
+            # 干净样本
+            clean_idx = np.where(~issues)[0]
+            X_clean = X[clean_idx]
+            y_clean = y[clean_idx]
+            if 'X' in train_input:
+                train_input["X"],train_input["y"] = X_clean,y_clean
+            else:
+                train_input["X_train"],train_input["y_train"] = X_clean,y_clean
+
         model.fit(**train_input)
 
         fit_time = time.time() - start_time
@@ -1078,7 +1156,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
             "noise_type": noise_type,
-            "split_rate_eln":split_rate_eln,
+            "is_cleanlab":is_cleanlab,
             "fit_time": fit_time,
             "inference_time": inference_time,
             "n_train": len(data["y_train"]),
@@ -1119,7 +1197,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": np.nan,
             "aucpr": np.nan,
             "noise_type": noise_type,
-            "split_rate_eln":split_rate_eln,
+            "is_cleanlab":is_cleanlab,
             "fit_time": np.nan,
             "inference_time": np.nan,
             "n_train": np.nan,
@@ -1239,13 +1317,13 @@ def main():
     )
 
     parser.add_argument(
-        "--split_rate_eln",
-        nargs="+",
-        type=float,
-        choices=[0.8,0.7],
-        default=[0.8],
-        help="为eln实验,加入纯净的有标签正常样本而划分的数据集比例，" \
-        "默认: 0.8(表示20%的纯净有标签正常样本可依赖参数eln加入训练),该参数目前不生效",
+        "--is_cleanlab",
+        nargs="+" ,
+        type=str,
+        choices=["true", "false"],
+        default=["false"],
+        help="这是是否启用清洗数据的开关参数" \
+        "默认：不开启，和之前的实验条件一致",
     )
 
     parser.add_argument(
@@ -1343,7 +1421,7 @@ def main():
         flip_ar_list=args.flip_ar_list,
         target_for_unlabeled=args.target_for_unlabeled,
         noise_type=args.noise_type,
-        split_rate_eln=args.split_rate_eln,
+        is_cleanlab=args.is_cleanlab,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,

@@ -292,7 +292,6 @@ class DataGenerator:
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
             data_type=None,
-            split_rate_eln: float = 0.8,
             exp_note = None,
             # seg_num=None,
             # pretrain_model=None,
@@ -1079,12 +1078,6 @@ class DataGenerator:
             idx_normal = np.where(y_train == 0)[0]
             idx_anomaly = np.where(y_train == 1)[0]
 
-            # #划分出一部分正常样本，为后续作为有标签正常样本加入训练使用  #废弃的eln_setting
-            # n_split_normal = int(split_rate_eln * len(idx_normal))
-            # n_split_anomaly = int(split_rate_eln * len(idx_anomaly))
-            # idx_normal1, idx_normal2 = idx_normal[:n_split_normal], idx_normal[n_split_normal:]
-            # idx_anomaly1, idx_anomaly2 = idx_anomaly[:n_split_anomaly], idx_anomaly[n_split_anomaly:]
-
             if type(la) == float:
                 if at_least_one_labeled:
                     idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
@@ -1177,9 +1170,9 @@ class DataGenerator:
             "mask": mask,
             "bag_info_train":bag_idx_train,
             "bag_info_test":bag_idx_test,
-            "NUM_FRAMES":n_samples     #这里是tabular_inexact的每个包内样本数，为了减少代码改动，沿用这个名字,tabular_inexact专用
-
         }
+        if X_train.ndim ==3:
+            result["NUM_FRAMES"] = X_train.shape[1]  # 这里是tabular_inexact的每个包内样本数，为了减少代码改动，沿用这个名字,tabular_inexact专用
 
         if data is not None and isinstance(data, dict):
             data.update(result)

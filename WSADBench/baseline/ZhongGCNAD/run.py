@@ -357,8 +357,8 @@ class ZhongGCNAD:
                 adj = torch.FloatTensor(adj_np).unsqueeze(0).to(self.device)
                 
                 optimizer.zero_grad()
-                output = self.gcn_model(sampled_feats, adj).squeeze()
-                
+                # output = self.gcn_model(sampled_feats, adj).squeeze()
+                output = self.gcn_model(sampled_feats, adj).squeeze(0).squeeze(0)
                 # 1. 直接监督损失
                 target_scores = torch.FloatTensor(sampled_scores_np[high_conf_indices_in_graph]).to(self.device)
                 loss_d = criterion_supervised(output[high_conf_indices_in_graph], target_scores)
@@ -382,7 +382,8 @@ class ZhongGCNAD:
             if self.verbose:
                 logger.info(f"  GCN Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(loader):.4f}")
 
-    def fit(self, X: np.ndarray, y: np.ndarray, vid_info: np.ndarray = None, crops_num: int = None):
+    # def fit(self, X: np.ndarray, y: np.ndarray, vid_info: np.ndarray = None, crops_num: int = None): # 原版
+    def fit(self, X: np.ndarray, y: np.ndarray, bags_info: np.ndarray = None, crops_num: int = 10):
         """
         训练ZhongGCNAD模型
         Args:
@@ -393,15 +394,16 @@ class ZhongGCNAD:
         """
         assert crops_num is not None, "crops_num 必须被提供以便正确重塑数据."  # 没有类别标签
         clips_num = X.shape[0] // crops_num
-        #为tabular_inexact添加视频ID信息
-        vid_info = np.arange(len(X))
+        
         # 重塑X并计算每个clip的平均特征
         X_reshaped = X.reshape(clips_num, crops_num, -1)
         X_clips = X_reshaped.mean(axis=1)
-        
+
+
         # 提取每个clip的标签和视频ID (假设同一clip的所有crop共享相同信息)
         y_clips = y.reshape(clips_num, crops_num)[:, 0]
-        vid_info_clips = vid_info.reshape(clips_num, crops_num)[:, 0]
+        # vid_info_clips = vid_info.reshape(clips_num, crops_num)[:, 0] # 原版
+        vid_info_clips = bags_info.reshape(clips_num, crops_num)[:, 0]
         
         self.input_dim = X_clips.shape[1]
         self.gcn_feat_dim = X_clips.shape[1]

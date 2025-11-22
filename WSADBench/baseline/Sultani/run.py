@@ -42,6 +42,7 @@ class Sultani:
         sparsity_weight: float = 0.00008,
         smoothness_weight: float = 0.00008,
         # 其他参数
+        exp_note: str = "tabular_inexact",
         segments_per_video: int = 32,
         use_scheduler: bool = True,
         scheduler_milestones: List[int] = None,
@@ -76,6 +77,7 @@ class Sultani:
         self.weight_decay = weight_decay
         self.sparsity_weight = sparsity_weight
         self.smoothness_weight = smoothness_weight
+        self.exp_note = exp_note
         self.segments_per_video = segments_per_video
         self.use_scheduler = use_scheduler
         self.scheduler_milestones = scheduler_milestones or [25, 50]
@@ -156,6 +158,7 @@ class Sultani:
                              batch_size=self.batch_size,
                              device=self.device,
                              verbose=self.verbose,
+                             exp_note=self.exp_note,
                              seg=self.segments_per_video,
                              clip_num=vid_source_clips_num, crops_num=crops_num)
         self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],

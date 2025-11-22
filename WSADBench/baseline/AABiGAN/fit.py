@@ -191,7 +191,7 @@ def fit_aabigan(
                 z_normal = encoder(unlabeled_batch[: labeled_batch.size(0)])
                 # 最大化异常和正常样本在潜在空间的距离
                 anomaly_loss = -torch.mean(torch.norm(z_anomaly - z_normal, dim=1))
-            print(f'anomaly_loss:{anomaly_loss}')
+            # print(f'anomaly_loss:{anomaly_loss}')
             # 辅助损失
             aux_loss = 0.0
             if aux_batch is not None:
