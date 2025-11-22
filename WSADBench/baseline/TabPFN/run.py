@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from WSADBench.myutils import Utils
 from typing import Literal
-from common_utils.ood_dataset.train import show_emb
+# from common_utils.ood_dataset.train import show_emb
 from sklearn.datasets import load_breast_cancer
 from sklearn.metrics import accuracy_score, roc_auc_score, average_precision_score
 from sklearn.model_selection import train_test_split

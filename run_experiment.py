@@ -7,6 +7,7 @@ import os
 import time
 import gc
 import argparse
+from cv2 import log
 import numpy as np
 import pandas as pd
 import yaml
@@ -34,6 +35,7 @@ import cleanlab
 from cleanlab import Datalab
 from cleanlab.classification import CleanLearning
 from cleanlab.filter import find_label_issues
+from sklearn.ensemble import RandomForestClassifier
 
 class ModelRegistry:
     """模型注册器，用于管理和创建不同的模型"""
@@ -70,6 +72,8 @@ class ModelRegistry:
             "PUMA": "WSADBench.baseline.PUMA.run.PUMA",
             "TabNet": "WSADBench.baseline.TabNet.run.TabNet",
             "DualMGAN": "WSADBench.baseline.DualMGAN.run.DualMGAN",
+            "TabPFN": "WSADBench.baseline.TabPFN.run.TabPFN",
+            "TabMCls": "WSADBench.baseline.TabMCls.run.TabMCls",
         }
         return default_model_map.get(model_name, None)
 
@@ -1067,57 +1071,21 @@ def run_single_experiment_with_gpu(params_with_config):
                 X, y = train_input["X_train"], train_input["y_train"]
             else:
                 X, y = train_input["X"], train_input["y"]
-            kf = KFold(n_splits=5, shuffle=True)
-            pred_probs = np.zeros((len(X),len(np.unique(y))))
-            for train_idx, valid_idx in kf.split(X):
-                model.fit(X[train_idx], y[train_idx])
-                probs = pred_func(X[valid_idx])     #这块可能会报错
-
-                # --- 统一转换为 (N,2) 的概率矩阵 ---
-                if probs.ndim == 1:
-                    # probs 是 (N,), 只有一个 score
-                    # softmax([0, score]) 的等价形式
-                    logits = np.column_stack([np.zeros_like(probs), probs])   # (N,2)
-
-                    # softmax
-                    e = np.exp(logits - logits.max(axis=1, keepdims=True))
-                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
-
-                elif probs.ndim == 2 and probs.shape[1] ==1:
-                    #展平为1维
-                    probs = probs.flatten()
-                    logits = np.column_stack([np.zeros_like(probs), probs])   # (N,2)
-
-                    # softmax
-                    e = np.exp(logits - logits.max(axis=1, keepdims=True))
-                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
-
-                elif probs.ndim == 2 and probs.shape[1] == 2:
-                    # probs 已经是 (N,2) logits
-                    e = np.exp(probs - probs.max(axis=1, keepdims=True))
-                    probs = e / e.sum(axis=1, keepdims=True)              # (N,2)
-
-                else:
-                    raise ValueError(
-                        f"pred_func 输出形状 {probs.shape} 不符合二分类概率转换要求"
-                    )
-
-                pred_probs[valid_idx] = probs
-
-            #找到噪声样本索引
-            issues = cleanlab.filter.find_label_issues(y, pred_probs)
-            #移除噪声样本
-            issues = np.array(issues)
+            clf = RandomForestClassifier()                       #使用随机森林模型作为清洗模型
+            cl = CleanLearning(clf,cv_n_folds=5,seed=seed)
+            clf.fit(X, y)
+            # 获取清洗后的标签索引
+            label_issues = cl.find_label_issues(X, y)
+            issues = np.array(label_issues['is_label_issue'])
             # 噪声样本
             noise_idx = np.where(issues)[0]
-            # 干净样本
-            clean_idx = np.where(~issues)[0]
-            X_clean = X[clean_idx]
-            y_clean = y[clean_idx]
-            if 'X' in train_input:
-                train_input["X"],train_input["y"] = X_clean,y_clean
+            y[noise_idx] = 1 - y[noise_idx]   # 修正噪声样本标签
+            logger.info(f"CleanLearning 检测到并修正了 {len(noise_idx)} 个噪声标签样本")
+
+            if 'X' in train_input:    #更新训练数据
+                train_input["X"],train_input["y"] = X,y
             else:
-                train_input["X_train"],train_input["y_train"] = X_clean,y_clean
+                train_input["X_train"],train_input["y_train"] = X,y
 
         model.fit(**train_input)
 
