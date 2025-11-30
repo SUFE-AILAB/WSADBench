@@ -22,7 +22,7 @@ backups/
 *.xz
 useless_tries/
 WSADBench/datasets/CV*
-WSADBench/datasets/Classical
+WSADBench/datasets/Classical*
 WSADBench/datasets/NLP*
 run_adbench_wsad_baseline.py
 implementing
