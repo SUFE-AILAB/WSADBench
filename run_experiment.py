@@ -131,10 +131,13 @@ class ExperimentRunner:
             "tabular_CV_by_ViT",
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
+            #tabular_inexact
             "classical_bags_inexact",
+            "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
             "tabular_CV_by_ResNet18_OOD_pic",
+
         ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
 
@@ -347,6 +350,9 @@ class ExperimentRunner:
         elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
             datasets = self.data_generator.generate_dataset_list()["classical_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
+        elif self.data_type == "CV_by_ViT_bags_inexact":
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ViT_bags_inexact"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ViT_bags_inexact数据集")
         elif self.data_type == "tabular_CV_by_ResNet18_OOD":  # 含pic和emb两种
             datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD"]
             logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD数据集")
@@ -538,7 +544,7 @@ class ExperimentRunner:
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"]
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"] 
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -584,7 +590,7 @@ class ExperimentRunner:
 
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab, self.exp_note))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab,self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -1071,22 +1077,44 @@ def run_single_experiment_with_gpu(params_with_config):
                 X, y = train_input["X_train"], train_input["y_train"]
             else:
                 X, y = train_input["X"], train_input["y"]
+
             clf = RandomForestClassifier()                       #使用随机森林模型作为清洗模型
             cl = CleanLearning(clf,cv_n_folds=5,seed=seed)
-            clf.fit(X, y)
+            cl.fit(X, y)
             # 获取清洗后的标签索引
             label_issues = cl.find_label_issues(X, y)
             issues = np.array(label_issues['is_label_issue'])
-            # 噪声样本
-            noise_idx = np.where(issues)[0]
-            y[noise_idx] = 1 - y[noise_idx]   # 修正噪声样本标签
-            logger.info(f"CleanLearning 检测到并修正了 {len(noise_idx)} 个噪声标签样本")
+            label_quality = np.array(label_issues["label_quality"])
+            # 1) 找出所有噪声样本索引
+            noise_idx = np.where(issues)[0]   # is_label_issue == True 的样本
+
+            # 如果没有噪声样本，直接返回空
+            if len(noise_idx) == 0:
+                low_quality_noise_idx = np.array([], dtype=int)
+            else:
+                # 2) 取这些样本的 label_quality
+                noise_label_quality = label_quality[noise_idx]
+
+                # 3) 噪声样本中选 label_quality 最低的 30%
+                k = int(len(noise_idx) * 0.30)
+                k = max(k, 1)   # 避免 k = 0
+
+                # 4) 找出噪声样本内部排序的索引
+                local_sorted_idx = np.argsort(noise_label_quality)[:k]
+
+                # 5) 映射回原始样本索引
+                low_quality_noise_idx = noise_idx[local_sorted_idx]
+                        
+            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]   # 修正噪声样本标签
+
+            logger.info(f"CleanLearning 检测到并修正了 {len(low_quality_noise_idx)} 个高置信度低质噪声标签样本")
 
             if 'X' in train_input:    #更新训练数据
                 train_input["X"],train_input["y"] = X,y
             else:
                 train_input["X_train"],train_input["y_train"] = X,y
 
+        
         model.fit(**train_input)
 
         fit_time = time.time() - start_time
@@ -1205,6 +1233,7 @@ def main():
             "classical_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
             "tabular_CV_by_ResNet18_OOD_pic",
+            "CV_by_ViT_bags_inexact"
         ],
         required=True,
         default=["tabular_classical"],

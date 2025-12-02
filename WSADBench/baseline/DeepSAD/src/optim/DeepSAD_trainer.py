@@ -66,7 +66,7 @@ class DeepSADTrainer(BaseTrainer):
                 inputs, semi_targets = inputs.to(self.device), semi_targets.to(self.device)
 
                 # transfer the label "1" to "-1" for the inverse loss
-                semi_targets[semi_targets==1] = -1
+                # semi_targets[semi_targets==1] = -1  已实现semi-supervised功能，无需转换
 
                 # Zero the network parameter gradients
                 optimizer.zero_grad()

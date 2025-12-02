@@ -4,10 +4,10 @@
 from .odds import ODDSADDataset
 
 
-def load_dataset(data, train=True):
+def load_dataset(data,mask, train=True):
     """Loads the dataset."""
 
     # for tabular data
-    dataset = ODDSADDataset(data=data, train=train)
+    dataset = ODDSADDataset(data=data,mask=mask, train=train)
 
     return dataset

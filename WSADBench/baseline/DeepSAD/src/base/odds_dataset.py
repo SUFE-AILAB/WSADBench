@@ -20,13 +20,14 @@ class ODDSDataset(Dataset):
     to also return the semi-supervised target as well as the index of a data sample.
     """
 
-    def __init__(self, data, train=True,batch_size=128):
+    def __init__(self, data,train=True,batch_size=128):
         super(Dataset, self).__init__()
         self.train = train
 
         if self.train:
             self.data = torch.tensor(data['X_train'], dtype=torch.float32)
             self.targets = torch.tensor(data['y_train'], dtype=torch.int64)
+
         else:
             self.data = torch.tensor(data['X_test'], dtype=torch.float32)
             self.targets = torch.tensor(data['y_test'], dtype=torch.int64)
@@ -38,8 +39,8 @@ class ODDSDataset(Dataset):
             self.data = self.data.repeat((repeat_times, *([1] * (self.data.dim() - 1))))[:batch_size]
             self.targets = self.targets.repeat((repeat_times,))[:batch_size]
 
-        # self.semi_targets = torch.zeros_like(self.targets)
-        self.semi_targets = self.targets
+        self.semi_targets = torch.zeros_like(self.targets)  #源码
+        # self.semi_targets = self.targets
 
     def __getitem__(self, index):
         """

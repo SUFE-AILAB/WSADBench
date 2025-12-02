@@ -20,7 +20,7 @@ class DeepSAD():
         self.xp_path = None
         self.load_config = None
         self.load_model = None
-        self.eta = 1.0 # eta in the loss function
+        self.eta = 1 # eta in the loss function
         self.optimizer_name = 'adam'
         self.lr = 0.001
         self.n_epochs = 50
@@ -37,13 +37,14 @@ class DeepSAD():
         self.num_threads = 0
         self.n_jobs_dataloader = 0
 
-    def fit(self, X_train, y_train, ratio=None):
+    def fit(self, X_train, y_train,mask, ratio=None):
         """
         Deep SAD, a method for deep semi-supervised anomaly detection.
 
         :arg DATASET_NAME: Name of the dataset to load.
         :arg NET_NAME: Name of the neural network to use.
         :arg XP_PATH: Export path for logging the experiment.
+        :arg mask: mask for semi-supervised setting,ln_exp
         """
 
         # Set seed (using myutils)
@@ -58,7 +59,7 @@ class DeepSAD():
 
         # Load data
         data = {'X_train': X_train, 'y_train': y_train}
-        dataset = load_dataset(data=data, train=True)
+        dataset = load_dataset(data=data, mask=mask,train=True)
         input_size = dataset.train_set.data.size(1) #input size
 
         # Initialize DeepSAD model and set neural network phi
@@ -110,7 +111,7 @@ class DeepSAD():
 
     def predict_score(self, X):
         # input randomly generated y label for consistence
-        dataset = load_dataset(data={'X_test': X, 'y_test': np.random.choice([0, 1], X.shape[0])}, train=False)
+        dataset = load_dataset(data={'X_test': X, 'y_test': np.random.choice([0, 1], X.shape[0])},mask=None, train=False)
         score = self.deepSAD.test(dataset, device=self.device, n_jobs_dataloader=self.n_jobs_dataloader)
 
         return score
