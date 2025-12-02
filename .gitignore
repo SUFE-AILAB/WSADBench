@@ -38,3 +38,8 @@ datasets_process
 ckpt
 UMIL.main.py
 catboost_info
+MALLORN
+notebook
+LimiX
+*.ipynb
+.gitignore

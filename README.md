@@ -15,14 +15,12 @@ WSADBench提供了一个统一的框架来评估和比较各种弱监督异常�
 - **配置化管理**: 通过YAML配置文件管理数据集和模型参数
 
 ## 🚀 快速开始
-
 ### 环境配置
 
 1. 安装依赖：
 ```bash
 conda create -n ad python=3.9 -y
 conda activate ad
-
 conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 pip3 install torch torchvision torchaudio
 pip install tf-nightly
@@ -34,12 +32,55 @@ pip install opencv-python
 2. 配置数据集路径（详见下方数据集配置说明）
 
 ### 运行实验
-
 #### 表格数据实验
+
 ```bash
 # 运行单个模型
-python run_experiment.py --models IForest --data_type tabular
+python run_experiment.py --models IForest --data_type tabular_CV_by_ResNet18
+python run_experiment.py --models TargAD --data_type tabular_classical
+# 快速测试
+python run_experiment.py --data_type tabular --models TargAD --seed_list 1 --rla_list 0.1 --n_jobs 1 --gpus 0
+python run_experiment.py --data_type tabular --models TargAD --datasets 30_satellite --rla_list 0.1 --n_jobs 1 --gpus 0
+python run_experiment.py --data_type tabular_NLP_by_BERT --models GANomaly AABiGAN REPEN FEAWAD NTL PReNet RoSAS DeepSAD CatB DevNet LGB XGB XGBOD DualMGAN --rla_list 1 --eln_list 0.0 --seed_list 0 --n_jobs 1 --gpus 1 --target_for_unlabeled fill_unlabel_0 --NO_RESUME
 
+#incomplete实验
+CUDA_VISIBLE_DEVICES=3 python run_experiment.py --data_type tabular_CV_by_ViT --models DeepSAD --rla_list 1 3 5 10 15 20 50 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 3 --target_for_unlabeled fill_unlabel_0
+#AABiGAN PReNet RoSAS DeepSAD CatB DevNet GANomaly LGB XGB XGBOD TargAD
+ AABiGAN REPEN FEAWAD NTL PReNet RoSAS DeepSAD CatB DevNet LGB XGB XGBOD DualMGAN
+CUDA_VISIBLE_DEVICES=1 python run_experiment.py --data_type tabular_CV_by_ViT --models REPEN FEAWAD NTL PReNet RoSAS DeepSAD DevNet XGBOD GANomaly AABiGAN --rla_list 1 3 5 10 15 20 50 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 1 --target_for_unlabeled fill_unlabel_0
+
+CUDA_VISIBLE_DEVICES=1 python run_experiment.py --data_type tabular_CV_by_ResNet18 --models NTL --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 1 --target_for_unlabeled fill_unlabel_0 --exp_note incomplete_rla
+
+
+#rln实验
+CUDA_VISIBLE_DEVICES=7 python run_experiment.py --data_type tabular_classical --models DeepSAD --rla_list 0.05 0.1 0.25 0.5 --eln_list 0.01 0.05 0.1 0.25 0.5 0.9 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 7 --target_for_unlabeled fill_unlabel_0 --exp_note rln_setting_eta05
+
+#-------------------------------------------------------------------------------------------------------------------------------
+#inaccurate 实验
+PReNet FEAWAD NTL  AABiGAN XGB DualMGAN FTTransformer
+RoSAS DeepSAD REPEN DevNet CatB XGBOD
+
+CUDA_VISIBLE_DEVICES=4 python run_experiment.py --data_type tabular_classical --models NTL --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 4 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_double
+
+CUDA_VISIBLE_DEVICES=3 python run_experiment.py --data_type tabular_classical --models FTTransformer --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 2 --gpus 3 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination
+
+CUDA_VISIBLE_DEVICES=1 python run_experiment.py --data_type tabular_CV_by_ViT --models PReNet DevNet GANomaly AABiGAN REPEN FEAWAD NTL RoSAS DeepSAD --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0  --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 1 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination
+
+CUDA_VISIBLE_DEVICES=5 python run_experiment.py --data_type tabular_classical --models REPEN DeepSAD --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.5 0.25 0.1 0.05 0.01 0.0 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 1 --gpus 5 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab true --exp_note inacc_with_clean
+#unlabel 实验
+ DevNet GANomaly AABiGAN REPEN FEAWAD NTL RoSAS DeepSAD CatB PReNet XGBOD 
+ 0.01 0.1 0.5 1.0 / 0.01 0.1 0.5 1.0
+CUDA_VISIBLE_DEVICES=2 python run_experiment.py --data_type tabular_classical --models TabPFN --rla_list 1 10 20 50 --eln_list 0.0 --ru_list 20 50 200 1000 --flip_nr_list 0.0 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 2 --gpus 2 --target_for_unlabeled fill_unlabel_0 --exp_note unlabel_nlanu
+CatB NTL RoSAS DeepSAD PReNet XGBOD
+DevNet GANomaly AABiGAN REPEN FEAWAD
+
+1 10 20 50  /  20 50 200 1000
+CUDA_VISIBLE_DEVICES=0 python run_experiment.py --data_type tabular_classical --models DualMGAN --datasets 23_mammography --rla_list 1 --eln_list 0.0 --ru_list 20 --flip_nr_list 0.0 --flip_ar_list 0.0 --seed_list 0 --n_jobs 1 --gpus 0 --target_for_unlabeled fill_unlabel_0 --exp_note unlabel_setting
+
+#tabular_inexact 实验
+CUDA_VISIBLE_DEVICES=5 python run_experiment.py --data_type CV_by_ViT_bags_inexact --models TabPFN --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 2 --gpus 5 --target_for_unlabeled fill_unlabel_0 --exp_note tabular_inexact
+
+ 
 # 运行多个模型
 python run_experiment.py --models IForest AABiGAN CRGAN --data_type tabular
 
@@ -49,8 +90,9 @@ python run_experiment.py --models IForest --seeds 5 --processes 4 --data_type ta
 
 #### 视频数据实验
 ```bash
-python run_experiment.py --models Sultani --datasets UCF_Crime --n_jobs 1 --rla_list 1.0  --seed_list 0  --data_type video
+python run_experiment.py --models Sultani --datasets UCF_Crime --n_jobs 1 --rla_list 1.0 --eln_list 0.0  --seed_list 1  --data_type video --gpus 2
 
+python run_experiment.py --models ARNet --datasets UCF_Crime.s32 --n_jobs 1 --rla_list 1.0 --eln_list 0.0 --seed_list 1  --data_type video --gpus 2
 # 使用6号和7号两块gpu，并行跑2个任务跑Sultani 这个模型设置，跑10个seed。
 python run_experiment.py --models Sultani  --datasets UCF_Crime --n_jobs 2 --rla_list 1.0  --data_type video  --gpus 6,7
 
