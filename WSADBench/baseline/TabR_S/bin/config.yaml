@@ -1,0 +1,28 @@
+batch_size: 256
+context_size: 96 # 论文统一标准值
+data:
+  cache: false
+  cat_policy: null
+  num_policy: quantile
+  path: :data/wsad_ood 
+  seed: 0
+  y_policy: null
+model:
+  activation: ReLU
+  context_dropout: 0.3892 # 论文推荐值: 0.38920071545944357
+  d_main: 265  # 论文推荐值: 265
+  d_multiplier: 2.0
+  dropout0: 0.38852797479169876   # 论文推荐值: 0.38852797479169876
+  dropout1: 0.0
+  encoder_n_blocks: 0  # N_e
+  mixer_normalization: auto
+  normalization: LayerNorm
+  num_embeddings: null #  TabR-S 核心定义: 不使用数值嵌入 (num_embeddings=None)
+  predictor_n_blocks: 1  # N_p
+n_epochs: 50  # 参考论文图片中的epoch范围
+optimizer:
+  lr: 0.000312   # 论文推荐值: 0.0003121273641315169
+  type: AdamW
+  weight_decay: 1.2e-6  # 论文推荐值: 0.0000012260352006404615
+patience: 16  # 没有早停
+seed: 0
