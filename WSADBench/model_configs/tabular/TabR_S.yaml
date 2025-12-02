@@ -1,0 +1,10 @@
+# 指定模型类和参数
+
+# 模型类路径
+model_class: WSADBench.baseline.TabR_S.run.TabR_S
+
+# 模型参数
+parameters: {}
+
+# 其他参数
+verbose: true
