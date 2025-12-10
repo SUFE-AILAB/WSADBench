@@ -21,6 +21,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
+
 # currently, data generator only supports for generating the binary classification datasets
 class DataGenerator:
     def __init__(
@@ -964,6 +965,7 @@ class DataGenerator:
             X_train, X_test, y_train, y_test, bag_idx_train, bag_idx_test = train_test_split(  # 7比3划分
                 X, y, bag_indices, test_size=self.test_size, shuffle=True, stratify=y
             )
+
             y_test_gt_idx = None
             y_test_gt = None
             if X_test.ndim == 3:
@@ -1158,6 +1160,7 @@ class DataGenerator:
         elif target_for_unlabeled == "delete_sample":  # 只使用有标签样本
             X_train = X_train[mask == 1]
             y_train = y_train[mask == 1]
+
 
         result = {
             "X_train": X_train,

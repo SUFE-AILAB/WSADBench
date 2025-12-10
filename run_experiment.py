@@ -7,7 +7,7 @@ import os
 import time
 import gc
 import argparse
-from cv2 import log
+# from cv2 import log
 import numpy as np
 import pandas as pd
 import yaml
@@ -74,6 +74,9 @@ class ModelRegistry:
             "DualMGAN": "WSADBench.baseline.DualMGAN.run.DualMGAN",
             "TabPFN": "WSADBench.baseline.TabPFN.run.TabPFN",
             "TabMCls": "WSADBench.baseline.TabMCls.run.TabMCls",
+            "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
+            "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
+            "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M"
         }
         return default_model_map.get(model_name, None)
 
@@ -983,7 +986,8 @@ def run_single_experiment_with_gpu(params_with_config):
         )
 
         # 检查数据有效性
-        if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+        # if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+        if len(data["y_train"]) == 0:
             logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
             return None
 
@@ -1027,15 +1031,23 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
-        if has_param(model.fit, "X_test"):
+        
+        if "inexact" in data_type:
+            if has_param(model.fit, "X_test"):
+                train_input["X_test"] = [
+                    data["X_test"],
+                    data_shape,
+                    data["y_test_idx"],
+                    data["y_test_gt"],
+                    data["y_test_gt_idx"],
+                    data["NUM_FRAMES"],
+                ]
+        if has_param(model.fit,"X_test"):
             train_input["X_test"] = [
                 data["X_test"],
-                data_shape,
-                data["y_test_idx"],
-                data["y_test_gt"],
-                data["y_test_gt_idx"],
-                data["NUM_FRAMES"],
+                data["y_test"]
             ]
+                
         if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
             train_input["X_test_extra"] = [
                 data.get("vid_kind_test", None),
@@ -1058,6 +1070,10 @@ def run_single_experiment_with_gpu(params_with_config):
             raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
 
         test_input = {}
+        if has_param(pred_func, "X_train"):
+            test_input["X_train"] = data["X_train"]
+        if has_param(pred_func, "y_train"):
+            test_input["y_train"] = data["y_train"]
         if has_param(pred_func, "X"):
             test_input["X"] = data["X_test"]
         if has_param(pred_func, "X_test"):
