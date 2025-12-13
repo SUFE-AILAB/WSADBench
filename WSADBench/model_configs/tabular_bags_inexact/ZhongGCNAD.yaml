@@ -1,0 +1,15 @@
+model_class: "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD"
+parameters:
+  # 模型架构参数
+  hidden_dims: [512, 128]
+  dropout: 0.6
+  optimization_rounds: 3
+  classifier_epochs: 20
+  gcn_epochs: 4  # this is the same as https://github.com/jx-zhong-for-academic-purpose/GCN-Anomaly-Detection/blob/master/pygcn/make_soft_label_c3d_high_conf.py
+  classifier_lr: 0.001
+  gcn_lr: 0.0001
+  gcn_momentum: 0.9
+  gcn_weight_decay: 0.0005
+  gcn_loss_i_weight: 0.8
+  batch_size: 64
+  verbose: True
