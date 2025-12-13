@@ -1,0 +1,10 @@
+#模型路径类
+model_class: WSADBench.baseline.LimiX.run.LimiX16M
+ 
+
+
+parameters: {}
+
+#其他参数
+
+verbose: true
