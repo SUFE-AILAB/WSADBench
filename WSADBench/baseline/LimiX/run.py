@@ -110,7 +110,7 @@ class LimiX16M:
     
     # --- 修改结束 ---
 
-        scores = self.model.predict(X_train_filtered,y_train_filtered,X_test)
+        scores = self.model.predict(X_train_filtered,y_train_filtered,X_test)     #注意下，小样本集的话不需要数据截断操作，这里直接传X_train,y_train过去就行
         
         return scores
 

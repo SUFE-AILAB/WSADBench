@@ -41,3 +41,8 @@ catboost_info
 MALLORN
 notebook
 *.ipynb
+
+WSADBench/baseline/LimiX/model_path
+WSADBench/baseline/LimiX/LimiXmain/doc
+WSADBench/baseline/LimiX/LimiXmain/examples
+WSADBench/baseline/LimiX/LimiXmain/Limix_Technical_Report.pdf
