@@ -340,17 +340,57 @@ class MaskEmbEncoder(nn.Module):
         x = torch.cat(x, dim=-1) # type: ignore
         batch_size, seq_len, group, feature_num = x.shape
 
+        # ---源码---开始
         x = x.unsqueeze(-1)
         is_mask = torch.isnan(x)
         x = x.masked_fill(is_mask, 0.0)
-        
+
         x_emb = self.numeric_mlp(x)
 
         mask_emb = self.mask_embedding.expand_as(x_emb)
         combined_emb = torch.where(is_mask, mask_emb, x_emb)
+
         del x, is_mask, x_emb
 
         concat_vector = combined_emb.flatten(3)
+        # ---源码---结束
+
+        # # --- 关键修改开始 ---
+        # # 2. 拍扁（Flatten）：将前四个维度合并，只保留最后一个维度作为特征输入
+        # # 原始形状: [B, S, G, F] -> 目标形状: [B*S*G*F, 1]
+        # x_flattened = x.view(-1, 1) 
+        
+        # # 3. 处理 NaN (在拍扁的状态下处理，效率更高)
+        # is_mask = torch.isnan(x_flattened)
+        # x_flattened = x_flattened.masked_fill(is_mask, 0.0)
+        
+        # # 4. 通过 MLP
+        # # 此时输入是 [N, 1]，Linear 层处理起来非常高效且不会出错
+        # x_emb_flattened = self.numeric_mlp(x_flattened)
+        
+        # # 5. 处理 Mask Embedding
+        # # 扩展 mask_embedding 以匹配拍扁后的形状
+        # # mask_embedding: [mask_emb_size] -> [B*S*G*F, mask_emb_size]
+        # # 注意：这里假设 mask_embedding_size == embedding_dim
+        # mask_emb_expanded = self.mask_embedding.expand(x_emb_flattened.shape[0], -1)
+        
+        # combined_emb_flattened = torch.where(is_mask, mask_emb_expanded, x_emb_flattened)
+        
+        # # 释放内存
+        # del x, is_mask, x_flattened, x_emb_flattened, mask_emb_expanded
+
+        
+        # # 6. 还原形状 (Reshape back)
+        # # 现在的形状是 [B*S*G*F, E]，我们需要 [B, S, G, F, E]
+        # # 但下一步是 concat_vector = combined_emb.flatten(3)，即把 F 和 E 合并
+        # # 所以我们可以直接 reshape 成 [B, S, G, F * E]
+        
+        # # 原始逻辑是：
+        # # combined_emb 形状 [B, S, G, F, E]
+        # # flatten(3) -> [B, S, G, F*E]
+        
+        # # 我们可以一步到位：
+        # concat_vector = combined_emb_flattened.view(batch_size, seq_len, group, -1)
 
         sample_representation = self.fusion_network(concat_vector)
         output = sample_representation.view(batch_size, seq_len, group, -1)

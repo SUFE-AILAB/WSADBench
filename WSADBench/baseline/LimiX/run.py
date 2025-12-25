@@ -83,7 +83,34 @@ class LimiX16M:
 
     def predict_score(self,X_train,y_train,X_test):
 
-        scores = self.model.predict(X_train,y_train,X_test)
+        # --- 修改开始：数据筛选逻辑 ---
+    
+        # 1. 找到所有正样本 (Label = 1) 的索引
+        pos_indices = np.where(y_train == 1)[0]
+        
+        # 2. 找到所有负样本 (Label = 0) 的索引
+        neg_indices = np.where(y_train == 0)[0]
+        
+        # # 3. 计算需要保留的负样本数量 (总数的一半)
+        # n_neg_to_keep = int(len(neg_indices) * 0.5)
+        
+        # 4. 从负样本中随机采样指定数量 (无放回采样)
+        # 如果希望结果可复现，可以在这里设置随机种子，例如 np.random.seed(42)
+        neg_indices_selected = np.random.choice(neg_indices, size=1000, replace=True)
+        
+        # 5. 合并索引
+        final_indices = np.concatenate([pos_indices, neg_indices_selected])
+        
+        # (可选) 打乱顺序，防止正负样本在物理上分块
+        np.random.shuffle(final_indices)
+        
+        # 6. 根据索引筛选数据
+        X_train_filtered = X_train[final_indices]
+        y_train_filtered = y_train[final_indices]
+    
+    # --- 修改结束 ---
 
+        scores = self.model.predict(X_train_filtered,y_train_filtered,X_test)
+        
         return scores
 
