@@ -38,6 +38,7 @@ datasets_process
 ckpt
 UMIL.main.py
 catboost_info
+notebook
 WSADBench/baseline/LimiX/model_path
 WSADBench/baseline/LimiX/LimiXmain/doc
 WSADBench/baseline/LimiX/LimiXmain/examples

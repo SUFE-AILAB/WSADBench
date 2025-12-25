@@ -81,7 +81,7 @@ def fit_aabigan(
 
     if X_aux is not None and len(X_aux) > 0:
         aux_dataset = TensorDataset(X_aux)
-        aux_loader = DataLoader(aux_dataset, batch_size=min(batch_size // 2, len(X_aux)), shuffle=True, drop_last=False)
+        aux_loader = DataLoader(aux_dataset, batch_size=min(batch_size // 2, len(X_aux)), shuffle=True, drop_last=True)
     else:
         aux_loader = None
 
@@ -187,8 +187,17 @@ def fit_aabigan(
             anomaly_loss = 0.0
             if labeled_batch is not None:
                 # 标记异常样本的编码应该与正常样本不同
-                z_anomaly = encoder(labeled_batch)
-                z_normal = encoder(unlabeled_batch[: labeled_batch.size(0)])
+                #修改
+                combine_batch = torch.cat([labeled_batch, unlabeled_batch[: labeled_batch.size(0)]], dim=0)
+                z_combined = encoder(combine_batch)
+                z_anomaly = z_combined[: labeled_batch.size(0)]
+                z_normal = z_combined[labeled_batch.size(0):] 
+
+                #注释源码
+                # z_anomaly = encoder(labeled_batch)
+                # z_normal = encoder(unlabeled_batch[: labeled_batch.size(0)])
+                # 结束
+
                 # 最大化异常和正常样本在潜在空间的距离
                 anomaly_loss = -torch.mean(torch.norm(z_anomaly - z_normal, dim=1))
             # print(f'anomaly_loss:{anomaly_loss}')
