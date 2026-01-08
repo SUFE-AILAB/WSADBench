@@ -7,11 +7,12 @@ import os
 import time
 import gc
 import argparse
+# from cv2 import log
 import numpy as np
 import pandas as pd
 import yaml
 import json
-
+from sklearn.model_selection import KFold
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -30,7 +31,11 @@ from WSADBench.datasets.data_generator import DataGenerator
 from WSADBench.myutils import Utils, import_class
 import resource
 import inspect
-
+import cleanlab
+from cleanlab import Datalab
+from cleanlab.classification import CleanLearning
+from cleanlab.filter import find_label_issues
+from sklearn.ensemble import RandomForestClassifier
 
 class ModelRegistry:
     """模型注册器，用于管理和创建不同的模型"""
@@ -58,14 +63,39 @@ class ModelRegistry:
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
             "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
             "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
-            "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
-            "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
             "PUMA": "WSADBench.baseline.PUMA.run.PUMA",
             "TabNet": "WSADBench.baseline.TabNet.run.TabNet",
+            "DualMGAN": "WSADBench.baseline.DualMGAN.run.DualMGAN",
+            "TabPFN": "WSADBench.baseline.TabPFN.run.TabPFN",
+            "TabMCls": "WSADBench.baseline.TabMCls.run.TabMCls",
+            "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
+            "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
+            "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M",
+            #无监督
+            "PyOD": "WSADBench.baseline.PyOD.PYOD",
+            "IForest": "WSADBench.baseline.PyOD.PYOD",
+            "LOF": "WSADBench.baseline.PyOD.PYOD",
+            "LUNAR": "WSADBench.baseline.PyOD.PYOD",
+            "AutoEncoder": "WSADBench.baseline.PyOD.PYOD",
+            "ECOD": "WSADBench.baseline.PyOD.PYOD",
+            "PCA": "WSADBench.baseline.PyOD.PYOD",
+            "CBLOF": "WSADBench.baseline.PyOD.PYOD",
+            "VAE": "WSADBench.baseline.PyOD.PYOD",
+            
+            "OCSVM": "WSADBench.baseline.PyOD.PYOD",
+            "KNN": "WSADBench.baseline.PyOD.PYOD",
+            "HBOS": "WSADBench.baseline.PyOD.PYOD",
+            "MCD": "WSADBench.baseline.PyOD.PYOD",
+            "SOS": "WSADBench.baseline.PyOD.PYOD",
+            "AAE": "WSADBench.baseline.PyOD.PYOD",
+            "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
+            
+
+
         }
         return default_model_map.get(model_name, None)
 
@@ -92,7 +122,7 @@ class ExperimentRunner:
         gpu_list=None,
         DEBUG=False,
         NO_RESUME=False,
-        split_rate_eln=None,
+        is_cleanlab=False,
         exp_note = None,
     ):
         """
@@ -111,7 +141,7 @@ class ExperimentRunner:
             flip_nr_list: 正常样本错误标注比例列表
             flip_ar_list: 异常样本错误标注比例列表
             seed_list: 随机种子列表
-            split_rate_eln: 对数据集的划分（为了eln功能扩展）
+            is_clean_lab: 是否开启数据噪声清洗功能，使用cleanlab库
             gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
         """
         self.DEBUG = DEBUG
@@ -123,10 +153,13 @@ class ExperimentRunner:
             "tabular_CV_by_ViT",
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
+            #tabular_inexact
             "classical_bags_inexact",
+            "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
             "tabular_CV_by_ResNet18_OOD_pic",
+
         ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
 
@@ -180,7 +213,7 @@ class ExperimentRunner:
         self.flip_ar_list = flip_ar_list if flip_ar_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5]
         self.target_for_unlabeled = target_for_unlabeled if target_for_unlabeled is not None else "fill_unlabel_0"
         self.noise_type = noise_type if noise_type is not None else None
-        self.split_rate_eln = split_rate_eln if split_rate_eln is not None else 0.8
+        self.is_cleanlab = is_cleanlab
         self.exp_note = exp_note
 
         # 获取数据集列表
@@ -209,7 +242,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"eln_setting下的数据划分比例(eln为0.0时不生效): {self.split_rate_eln}")
+        logger.info(f"是否开启数据噪声清洗功能: {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -339,6 +372,9 @@ class ExperimentRunner:
         elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
             datasets = self.data_generator.generate_dataset_list()["classical_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
+        elif self.data_type == "CV_by_ViT_bags_inexact":
+            datasets = self.data_generator.generate_dataset_list()["CV_by_ViT_bags_inexact"]
+            logger.info(f"找到 {len(datasets)} 个CV_by_ViT_bags_inexact数据集")
         elif self.data_type == "tabular_CV_by_ResNet18_OOD":  # 含pic和emb两种
             datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD"]
             logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD数据集")
@@ -441,6 +477,7 @@ class ExperimentRunner:
         data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
         #包标签广播为实例级标签
         data["y_train"] = data["y_train"].repeat(n_samples)
+        data["mask"] = data["mask"].repeat(n_samples)   #掩码必须同时广播
 
         # 保留包ID信息并扩展到samples
         if "bag_info_train" in data:
@@ -521,6 +558,7 @@ class ExperimentRunner:
             f"flip_normal_ratio={result.get('flip_normal_ratio')}, "
             f"flip_abnormal_ratio={result.get('flip_abnormal_ratio')}, "
             f"target_for_unlabeled={result.get('target_for_unlabeled')}, "
+            f"is_cleanlab={result.get('is_cleanlab')}, "
             f"noise_type={result.get('noise_type')}, "
             f"exp_note={result.get('exp_note', '')}"
         )
@@ -528,7 +566,7 @@ class ExperimentRunner:
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
         
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","split_rate_eln","exp_note"]
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"] 
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -574,7 +612,7 @@ class ExperimentRunner:
 
 
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.split_rate_eln, self.exp_note))
+        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab,self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -596,7 +634,7 @@ class ExperimentRunner:
         logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
         logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
         logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"eln_setting下的数据划分比例(若eln为0.0时，不起作用): {self.split_rate_eln}")
+        logger.info(f"是否开启数据噪声清洗功能 {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
         # 准备传递给子进程的实验配置（不包含完整的runner）
@@ -820,6 +858,12 @@ def generate_summary_only(output_dir):
     combined_df = pd.concat(all_results, ignore_index=True)
     logger.info(f"合并了 {len(all_results)} 个结果文件，总共 {len(combined_df)} 个实验结果")
 
+    # 去重
+    before = len(combined_df)
+    combined_df = combined_df.drop_duplicates()
+    after = len(combined_df)
+    logger.info(f"去重完成：删除了 {before - after} 条重复记录，剩余 {after} 条记录")
+
     #清洗NATtype数据
     target_object_cols = [
         'fit_time', 'inference_time']
@@ -893,14 +937,31 @@ class GPUManager:
             tasks_per_gpu[gpu_id] = tasks_per_gpu.get(gpu_id, 0) + 1
 
         return f"GPU分配: {dict(sorted(tasks_per_gpu.items()))}"
+    
+#为适配cleanlab添加包装类
+class CleanlabWSADWrapper:
+    def __init__(self, model):
+        self.model = model
 
+    def fit(self, X, y):
+        # 你自己的训练逻辑
+        self.model.train_loop(X, y)
+        return self
+
+    def predict_proba(self, X):
+        logits = self.model.predict_score(X)   # 或 model.forward
+        probs = torch.softmax(logits, dim=-1)
+        return probs.detach().cpu().numpy()
+
+    def predict(self, X):
+        return self.predict_proba(X).argmax(axis=1)
 
 def run_single_experiment_with_gpu(params_with_config):
     """
     带GPU分配的实验执行函数
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
-    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, split_rate_eln, exp_note = params
+    model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, is_cleanlab, exp_note = params
 
     if flip_normal_ratio > 0 or flip_abnormal_ratio > 0:
         noise_type = "label_contamination"
@@ -940,12 +1001,12 @@ def run_single_experiment_with_gpu(params_with_config):
             at_least_one_labeled=True,
             shortage_mode="ignore",
             data_type=data_type,
-            split_rate_eln=split_rate_eln,
             exp_note = exp_note
         )
 
         # 检查数据有效性
-        if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+        # if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+        if len(data["y_train"]) == 0:
             logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
             return None
 
@@ -978,6 +1039,8 @@ def run_single_experiment_with_gpu(params_with_config):
             train_input["y_train"] = data["y_train"]
         if has_param(model.fit, "mask"):
             train_input["mask"] = data["mask"]
+        if has_param(model.fit, "bags_info"):
+            train_input["bags_info"] = data.get("bag_info_train", None)
         if has_param(model.fit, "vid_info"):
             train_input["vid_info"] = data.get("vid_train", None)
         if has_param(model.fit, "crops_num"):
@@ -987,15 +1050,23 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
-        if has_param(model.fit, "X_test"):
+        
+        if "inexact" in data_type:
+            if has_param(model.fit, "X_test"):
+                train_input["X_test"] = [
+                    data["X_test"],
+                    data_shape,
+                    data["y_test_idx"],
+                    data["y_test_gt"],
+                    data["y_test_gt_idx"],
+                    data["NUM_FRAMES"],
+                ]
+        if has_param(model.fit,"X_test"):
             train_input["X_test"] = [
                 data["X_test"],
-                data_shape,
-                data["y_test_idx"],
-                data["y_test_gt"],
-                data["y_test_gt_idx"],
-                data["NUM_FRAMES"],
+                data["y_test"]
             ]
+                
         if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
             train_input["X_test_extra"] = [
                 data.get("vid_kind_test", None),
@@ -1018,6 +1089,10 @@ def run_single_experiment_with_gpu(params_with_config):
             raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
 
         test_input = {}
+        if has_param(pred_func, "X_train"):
+            test_input["X_train"] = data["X_train"]
+        if has_param(pred_func, "y_train"):
+            test_input["y_train"] = data["y_train"]
         if has_param(pred_func, "X"):
             test_input["X"] = data["X_test"]
         if has_param(pred_func, "X_test"):
@@ -1031,6 +1106,50 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(pred_func, "vid_source_clips_num"):
             test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
 
+        if is_cleanlab == "true":
+            print("启用 CleanLearning 进行数据清洗...")
+            if "X_train" in train_input:
+                X, y = train_input["X_train"], train_input["y_train"]
+            else:
+                X, y = train_input["X"], train_input["y"]
+
+            clf = RandomForestClassifier()                       #使用随机森林模型作为清洗模型
+            cl = CleanLearning(clf,cv_n_folds=5,seed=seed)
+            cl.fit(X, y)
+            # 获取清洗后的标签索引
+            label_issues = cl.find_label_issues(X, y)
+            issues = np.array(label_issues['is_label_issue'])
+            label_quality = np.array(label_issues["label_quality"])
+            # 1) 找出所有噪声样本索引
+            noise_idx = np.where(issues)[0]   # is_label_issue == True 的样本
+
+            # 如果没有噪声样本，直接返回空
+            if len(noise_idx) == 0:
+                low_quality_noise_idx = np.array([], dtype=int)
+            else:
+                # 2) 取这些样本的 label_quality
+                noise_label_quality = label_quality[noise_idx]
+
+                # 3) 噪声样本中选 label_quality 最低的 30%
+                k = int(len(noise_idx) * 0.30)
+                k = max(k, 1)   # 避免 k = 0
+
+                # 4) 找出噪声样本内部排序的索引
+                local_sorted_idx = np.argsort(noise_label_quality)[:k]
+
+                # 5) 映射回原始样本索引
+                low_quality_noise_idx = noise_idx[local_sorted_idx]
+                        
+            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]   # 修正噪声样本标签
+
+            logger.info(f"CleanLearning 检测到并修正了 {len(low_quality_noise_idx)} 个高置信度低质噪声标签样本")
+
+            if 'X' in train_input:    #更新训练数据
+                train_input["X"],train_input["y"] = X,y
+            else:
+                train_input["X_train"],train_input["y_train"] = X,y
+
+        
         model.fit(**train_input)
 
         fit_time = time.time() - start_time
@@ -1068,7 +1187,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
             "noise_type": noise_type,
-            "split_rate_eln":split_rate_eln,
+            "is_cleanlab":is_cleanlab,
             "fit_time": fit_time,
             "inference_time": inference_time,
             "n_train": len(data["y_train"]),
@@ -1109,7 +1228,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": np.nan,
             "aucpr": np.nan,
             "noise_type": noise_type,
-            "split_rate_eln":split_rate_eln,
+            "is_cleanlab":is_cleanlab,
             "fit_time": np.nan,
             "inference_time": np.nan,
             "n_train": np.nan,
@@ -1118,6 +1237,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.nan,
             "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
+            "exp_note": exp_note
         }
 
 
@@ -1148,6 +1268,7 @@ def main():
             "classical_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
             "tabular_CV_by_ResNet18_OOD_pic",
+            "CV_by_ViT_bags_inexact"
         ],
         required=True,
         default=["tabular_classical"],
@@ -1228,13 +1349,13 @@ def main():
     )
 
     parser.add_argument(
-        "--split_rate_eln",
-        nargs="+",
-        type=float,
-        choices=[0.8,0.7],
-        default=[0.8],
-        help="为eln实验,加入纯净的有标签正常样本而划分的数据集比例，" \
-        "默认: 0.8(表示20%的纯净有标签正常样本可依赖参数eln加入训练),eln=0.0时不生效",
+        "--is_cleanlab",
+        nargs="+" ,
+        type=str,
+        choices=["true", "false"],
+        default=["false"],
+        help="这是是否启用清洗数据的开关参数" \
+        "默认：不开启，和之前的实验条件一致",
     )
 
     parser.add_argument(
@@ -1332,7 +1453,7 @@ def main():
         flip_ar_list=args.flip_ar_list,
         target_for_unlabeled=args.target_for_unlabeled,
         noise_type=args.noise_type,
-        split_rate_eln=args.split_rate_eln,
+        is_cleanlab=args.is_cleanlab,
         seed_list=args.seed_list,
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
