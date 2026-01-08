@@ -1,0 +1,13 @@
+# ECOD模型配置文件
+# 使用PyOD的ECOD算法
+
+# 模型类路径
+model_class: WSADBench.baseline.PyOD.PYOD
+
+# 模型参数
+parameters:
+  # 指定使用ECOD算法
+  model_name: "ECOD"
+  
+  # 是否启用超参数调优
+  tune: false

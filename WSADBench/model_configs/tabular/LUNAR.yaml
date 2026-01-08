@@ -1,0 +1,13 @@
+# LUNAR模型配置文件
+# 使用PyOD的LUNAR算法
+
+# 模型类路径
+model_class: WSADBench.baseline.PyOD.PYOD
+
+# 模型参数
+parameters:
+  # 指定使用LUNAR算法
+  model_name: "LUNAR"
+  
+  # 是否启用超参数调优
+  tune: false
