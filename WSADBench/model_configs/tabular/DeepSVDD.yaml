@@ -1,0 +1,13 @@
+# DeepSVDD模型配置文件
+# 使用PyOD的DeepSVDD算法
+
+# 模型类路径
+model_class: WSADBench.baseline.PyOD.PYOD
+
+# 模型参数
+parameters:
+  # 指定使用DeepSVDD算法
+  model_name: "DeepSVDD"
+  
+  # 是否启用超参数调优
+  tune: false
