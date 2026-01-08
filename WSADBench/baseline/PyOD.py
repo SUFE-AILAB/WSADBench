@@ -25,11 +25,18 @@ from pyod.models.rod import ROD
 from pyod.models.sod import SOD
 from pyod.models.sos import SOS
 from pyod.models.vae import VAE
-from pyod.models.auto_encoder_torch import AutoEncoder
+# from pyod.models.auto_encoder_torch import AutoEncoder
+from pyod.models.auto_encoder import AutoEncoder
 from pyod.models.so_gaal import SO_GAAL
 from pyod.models.mo_gaal import MO_GAAL
 from pyod.models.xgbod import XGBOD
 from pyod.models.deep_svdd import DeepSVDD
+try:
+    from pyod.models.dif import DIF
+    from pyod.models.alad import ALAD
+    from pyod.models.lunar import LUNAR
+except:
+    pass
 
 
 class PYOD():
@@ -47,7 +54,13 @@ class PYOD():
                            'COPOD':COPOD, 'ECOD':ECOD,  'FeatureBagging':FeatureBagging, 'HBOS':HBOS, 'KNN':KNN,
                            'LMDD':LMDD, 'LODA':LODA, 'LOF':LOF, 'LOCI':LOCI, 'LSCP':LSCP, 'MAD':MAD,
                            'MCD':MCD, 'PCA':PCA, 'ROD':ROD, 'SOD':SOD, 'SOS':SOS, 'VAE':VAE, 'DeepSVDD': DeepSVDD,
-                           'AutoEncoder': AutoEncoder, 'SOGAAL': SO_GAAL, 'MOGAAL': MO_GAAL,'XGBOD': XGBOD}
+                           'AutoEncoder': AutoEncoder, 'SOGAAL': SO_GAAL, 'MOGAAL': MO_GAAL,'XGBOD': XGBOD,
+                           }
+        try:
+            self.model_dict.update({'ALAD': ALAD, 'DIF': DIF, 'SO_GAAL': SO_GAAL, 'LUNAR': LUNAR})
+        except:
+            pass
+    
 
         self.tune = tune
 
@@ -171,7 +184,10 @@ class PYOD():
                         model = self.model_dict[self.model_name](stop_epochs=param).fit(X_train)
 
                     elif self.model_name == 'DeepSVDD':
-                        model = self.model_dict[self.model_name](epochs=param).fit(X_train)
+                        model = self.model_dict[self.model_name](X_train.shape[1],epochs=param).fit(X_train)
+                    
+                    elif self.model_name in self.model_dict:
+                        model = self.model_dict[self.model_name]().fit(X_train)
 
                     else:
                         raise NotImplementedError
@@ -202,8 +218,8 @@ class PYOD():
 
         return best_param
 
-    def fit(self, X_train, y_train, ratio=None):
-        if self.model_name in ['AutoEncoder', 'VAE']:
+    def fit(self, X_train, y_train=None, ratio=None,normal_only=False):
+        if normal_only and self.model_name in ['AutoEncoder', 'VAE'] and y_train is not None:
             # only use the normal samples to fit the model
             idx_n = np.where(y_train==0)[0]
             X_train = X_train[idx_n]
@@ -278,14 +294,26 @@ class PYOD():
                 self.model = self.model_dict[self.model_name](stop_epochs=best_param).fit(X_train)
 
             elif self.model_name == 'DeepSVDD':
-                self.model = self.model_dict[self.model_name](epochs=best_param).fit(X_train)
+                self.model = self.model_dict[self.model_name](X_train.shape[1]).fit(X_train)
+                    
+            elif self.model_name in self.model_dict:
+                self.model = self.model_dict[self.model_name]().fit(X_train)
 
             else:
                 raise NotImplementedError
 
         else:
+            if self.model_name == 'DeepSVDD':
+                self.model = self.model_dict[self.model_name](X_train.shape[1]).fit(X_train)
+                return self
+            if self.model_name == 'XGBOD':
+                self.model = self.model_dict[self.model_name]()
+                self.model.fit(X_train, y_train)
+                return self
+            
             # unsupervised method would ignore the y labels
-            self.model = self.model_dict[self.model_name]().fit(X_train, y_train)
+            self.model = self.model_dict[self.model_name]()
+            self.model.fit(X_train)
 
         return self
 

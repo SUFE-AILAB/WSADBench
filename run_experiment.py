@@ -63,9 +63,7 @@ class ModelRegistry:
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
             "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
             "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
-            "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
-            "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
@@ -76,7 +74,28 @@ class ModelRegistry:
             "TabMCls": "WSADBench.baseline.TabMCls.run.TabMCls",
             "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
             "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
-            "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M"
+            "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M",
+            #无监督
+            "PyOD": "WSADBench.baseline.PyOD.PYOD",
+            "IForest": "WSADBench.baseline.PyOD.PYOD",
+            "LOF": "WSADBench.baseline.PyOD.PYOD",
+            "LUNAR": "WSADBench.baseline.PyOD.PYOD",
+            "AutoEncoder": "WSADBench.baseline.PyOD.PYOD",
+            "ECOD": "WSADBench.baseline.PyOD.PYOD",
+            "PCA": "WSADBench.baseline.PyOD.PYOD",
+            "CBLOF": "WSADBench.baseline.PyOD.PYOD",
+            "VAE": "WSADBench.baseline.PyOD.PYOD",
+            
+            "OCSVM": "WSADBench.baseline.PyOD.PYOD",
+            "KNN": "WSADBench.baseline.PyOD.PYOD",
+            "HBOS": "WSADBench.baseline.PyOD.PYOD",
+            "MCD": "WSADBench.baseline.PyOD.PYOD",
+            "SOS": "WSADBench.baseline.PyOD.PYOD",
+            "AAE": "WSADBench.baseline.PyOD.PYOD",
+            "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
+            
+
+
         }
         return default_model_map.get(model_name, None)
 
