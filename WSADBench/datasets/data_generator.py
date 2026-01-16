@@ -21,6 +21,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
+
 # currently, data generator only supports for generating the binary classification datasets
 class DataGenerator:
     def __init__(
@@ -240,7 +241,6 @@ class DataGenerator:
         """
         # 先转整型，防止后续下游 safe-casting 报错
         y_noisy = y.astype(np.int64, copy=True)
-        n_samples = len(y)
 
         # 找到正常和异常样本索引
         normal_idx = np.where(y == 0)[0]
@@ -293,7 +293,6 @@ class DataGenerator:
             noise_ratio: float = 0.05,
             shortage_mode="ignore",
             data_type=None,
-            split_rate_eln: float = 0.8,
             exp_note = None,
             # seg_num=None,
             # pretrain_model=None,
@@ -966,6 +965,7 @@ class DataGenerator:
             X_train, X_test, y_train, y_test, bag_idx_train, bag_idx_test = train_test_split(  # 7比3划分
                 X, y, bag_indices, test_size=self.test_size, shuffle=True, stratify=y
             )
+
             y_test_gt_idx = None
             y_test_gt = None
             if X_test.ndim == 3:
@@ -1080,12 +1080,6 @@ class DataGenerator:
             idx_normal = np.where(y_train == 0)[0]
             idx_anomaly = np.where(y_train == 1)[0]
 
-            # #划分出一部分正常样本，为后续作为有标签正常样本加入训练使用  #废弃的eln_setting
-            # n_split_normal = int(split_rate_eln * len(idx_normal))
-            # n_split_anomaly = int(split_rate_eln * len(idx_anomaly))
-            # idx_normal1, idx_normal2 = idx_normal[:n_split_normal], idx_normal[n_split_normal:]
-            # idx_anomaly1, idx_anomaly2 = idx_anomaly[:n_split_anomaly], idx_anomaly[n_split_anomaly:]
-
             if type(la) == float:
                 if at_least_one_labeled:
                     idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
@@ -1109,21 +1103,21 @@ class DataGenerator:
 
             if type(eln) == float:
                 if at_least_one_labeled:
-                    if len(idx_normal) < ceil(eln * len(idx_labeled_anomaly)):
-                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_labeled_anomaly))},using resample.")
-                        shortage = ceil(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                    if len(idx_normal) < ceil(eln * len(idx_normal)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_normal))},using resample.")
+                        shortage = ceil(eln * len(idx_normal)) - len(idx_normal)
                         extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
                         idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
                     else:
-                        idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)), replace=False)
+                        idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_normal)), replace=False)
                 else:
-                    if len(idx_normal) < int(eln * len(idx_labeled_anomaly)):
-                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_labeled_anomaly))},using resample.。")
-                        shortage = int(eln * len(idx_labeled_anomaly)) - len(idx_normal)
+                    if len(idx_normal) < int(eln * len(idx_normal)):
+                        print(f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_normal))},using resample.。")
+                        shortage = int(eln * len(idx_normal)) - len(idx_normal)
                         extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
                         idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
                     else:
-                        idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)), replace=False)
+                        idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_normal)), replace=False)
 
             elif type(eln) == int:
                 if eln > len(idx_normal):
@@ -1167,6 +1161,7 @@ class DataGenerator:
             X_train = X_train[mask == 1]
             y_train = y_train[mask == 1]
 
+
         result = {
             "X_train": X_train,
             "y_train": y_train,
@@ -1177,8 +1172,10 @@ class DataGenerator:
             "y_test_gt": y_test_gt,
             "mask": mask,
             "bag_info_train":bag_idx_train,
-            "bag_info_test":bag_idx_test
+            "bag_info_test":bag_idx_test,
         }
+        if X_train.ndim ==3:
+            result["NUM_FRAMES"] = X_train.shape[1]  # 这里是tabular_inexact的每个包内样本数，为了减少代码改动，沿用这个名字,tabular_inexact专用
 
         if data is not None and isinstance(data, dict):
             data.update(result)

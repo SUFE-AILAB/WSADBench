@@ -2,9 +2,15 @@ import os
 import pandas as pd
 import numpy as np
 import random
-import torch
 
-import fsspec
+try:
+    import torch
+    _torch_imported = True
+except ImportError:
+    _torch_imported = False
+    pass
+
+
 from tqdm import tqdm
 import json
 # metric
@@ -69,9 +75,10 @@ class Utils():
         #     pass
 
         # pytorch seed
-        torch.manual_seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        if _torch_imported:
+            torch.manual_seed(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
 
     def get_device(self, gpu_specific=False, verbose=True, gid=0):
         if gpu_specific:
@@ -106,6 +113,7 @@ class Utils():
         folder_list = ['CV_by_ResNet18', 'NLP_by_BERT', 'Classical']
         
         if repo == 'github':
+            import fsspec
             fs = fsspec.filesystem("github", org="Minqi824", repo="ADBench")
             print(f'Downloading datasets from the remote github repo...')
             for folder in tqdm(folder_list):
