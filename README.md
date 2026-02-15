@@ -89,6 +89,27 @@ python run_experiment.py \
     --data_type tabular_classical \
     --models DevNet \
     --seed_list 1 2 3 4 5
+
+# Run Incomplete (rla/nla/unlabel) experiments
+python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 7 --target_for_unlabeled fill_unlabel_0 --exp_note incomplete_rla
+
+python run_experiment.py --data_type tabular_CV_by_ViT --models DeepSAD --rla_list 1 3 5 10 15 20 50 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 6 --target_for_unlabeled fill_unlabel_0 --exp_note incomplete_nla
+
+python run_experiment.py --data_type tabular_NLP_by_RoBERTa --models REPEN --rla_list 1 10 20 50 --eln_list 0.0 --ru_list 20 50 200 1000 --flip_nr_list 0.0 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 1 --target_for_unlabeled fill_unlabel_0 --exp_note unlabel_nlanu
+
+# Run Inaccurate (fnr/far/double) experiments
+python run_experiment.py --data_type tabular_classical --models RoSAS --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 6 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_fnr
+
+python run_experiment.py --data_type tabular_classical --models RoSAS --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0  --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 5 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_far
+
+python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 3 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_double
+
+# Run Inexact experiments
+# Generate MIL bags datasets
+python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/classical_bags_inexact --bag-size 10 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
+# Run tabular inexact experiments
+python run_experiment.py --data_type classical_bags_inexact --models Sultani TabPFN --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 1 --gpus 2 --target_for_unlabeled fill_unlabel_0 --exp_note tabular_inexact
+
 ```
 
 ### Video Experiments
@@ -298,7 +319,7 @@ WSADBench/
 | `--models` | Model names to run | - |
 | `--datasets` | Specific datasets | All available |
 | `--rla_list` | Labeled anomaly ratios | [1.0] |
-| `--eln_list` | Labeled normal ratios (relative to RLA) | [0.01, 0.05, ...] |
+| `--eln_list` | Labeled normal ratios (relative to RLA) | [0.0, 0.01, ...] |
 | `--ru_list` | Unlabeled sample ratios | [1.0] |
 | `--flip_nr_list` | Label noise (normal→anomaly) | [0.0] |
 | `--flip_ar_list` | Label noise (anomaly→normal) | [0.0] |
