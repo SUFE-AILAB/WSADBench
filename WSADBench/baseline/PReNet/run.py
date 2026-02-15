@@ -62,26 +62,41 @@ class PReNet():
 
         X = X.float()
         X = X.to(self.device)
+        self.X_train_tensor = self.X_train_tensor.to(self.device)
+
+        #修改
+        data_size = X.size(0)
+        batch_size = 512
 
         score = []
-        for i in range(X.size(0)):
-            index_a = np.random.choice(np.where(self.y_train==1)[0], num, replace=True) #postive sample in training set
-            index_u = np.random.choice(np.where(self.y_train==0)[0], num, replace=True) #negative sample in training set
+        for i in range(0,data_size,batch_size):
+            end_index = min(i+batch_size, data_size)
+            X_batch = X[i:end_index]
+            current_batch_size = X_batch.size(0)
+            batch_accumulated_scores = torch.zeros(current_batch_size).to(self.device)
+            
+            for j in range(num):
+                index_a = np.random.choice(np.where(self.y_train==1)[0], current_batch_size, replace=True) #postive sample in training set
+                index_u = np.random.choice(np.where(self.y_train==0)[0], current_batch_size, replace=True) #negative sample in training set
 
-            X_train_a_tensor = self.X_train_tensor[index_a]
-            X_train_u_tensor = self.X_train_tensor[index_u]
+                X_train_a_tensor = self.X_train_tensor[index_a]
+                X_train_u_tensor = self.X_train_tensor[index_u]
 
-            with torch.no_grad():
-                score_a_x = self.model(X_train_a_tensor.to(self.device), torch.cat(num * [X[i].view(1, -1)]).to(self.device))
-                score_x_u = self.model(torch.cat(num * [X[i].view(1, -1)]).to(self.device), X_train_u_tensor.to(self.device))
+                with torch.no_grad():
+                    score_a_x = self.model(X_train_a_tensor, X_batch)
+                    score_x_u = self.model(X_batch, X_train_u_tensor)
 
-            score_sub = torch.mean(score_a_x + score_x_u)
-            score_sub = score_sub.cpu().numpy()[()]
+                # 累加得分 (保留样本维度)
+                batch_accumulated_scores += (score_a_x + score_x_u)
+            #得到每个样本分数
+            batch_final_scores = batch_accumulated_scores / (num * 2)
+            batch_final_scores = batch_final_scores.cpu().numpy().flatten()
 
             # entire score
-            score.append(score_sub)
+            score.append(batch_final_scores)
+        all_scores = np.concatenate(score)
 
-        return np.array(score)
+        return all_scores
 
     def parameter_count(self) -> dict:
         """
