@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache
 .idea/
 .vscode/
+myRes/
 guidance.ipynb
 .checkpoints/
 results/
@@ -45,3 +46,5 @@ WSADBench/baseline/LimiX/LimiXmain/examples
 WSADBench/baseline/LimiX/LimiXmain/Limix_Technical_Report.pdf
 pyod/
 .env
+CLAUDE.md
+TODO_OPEN_SOURCE.md

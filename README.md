@@ -1,171 +1,409 @@
-# WSADBench: Weakly-Supervised Anomaly Detection Benchmark
+# WSADBench
 
-WSADBench是一个专门用于弱监督异常检测的综合基准测试平台，支持表格数据（tabular）、视频数据（video）以及图像数据的异常检测研究。
+**Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark**
 
-## 📋 项目概述
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-red.svg)](https://pytorch.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-WSADBench提供了一个统一的框架来评估和比较各种弱监督异常检测算法。该项目包含了多种模态的数据集、多个基线模型以及完整的实验管理工具。
+WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, supporting multiple data modalities including tabular data (classical, CV features, NLP embeddings), video data, and inexact supervision (MIL bags).
 
-### 主要特性
+---
 
-- **多模态支持**: 支持表格数据、视频数据、图像数据
-- **统一的实验框架**: 提供标准化的训练、测试和评估流程
-- **丰富的基线模型**: 包含传统机器学习和深度学习方法
-- **并行处理**: 支持大规模实验的并行执行
-- **配置化管理**: 通过YAML配置文件管理数据集和模型参数
+## 📋 Table of Contents
 
-## 🚀 快速开始
+- [Key Features](#-key-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Data Preparation](#-data-preparation)
+- [Supported Models](#-supported-models)
+- [Project Structure](#-project-structure)
+- [Advanced Usage](#-advanced-usage)
+- [Citation](#-citation)
+- [License](#-license)
+- [Acknowledgments](#-acknowledgments)
 
-### 环境配置
+---
 
-1. 安装依赖：
+## 🚀 Key Features
+
+- **Multi-Modal Support**: Tabular (classical, CV features, NLP embeddings), Video, and MIL bags
+- **30+ Baseline Models**: Weak supervision, semi-supervised, and unsupervised methods
+- **Flexible Supervision Settings**: Configurable labeled anomaly ratios (RLA), labeled normal ratios (ELN), unlabeled ratios, and label noise
+- **Parallel Execution**: Multi-GPU support with automatic GPU assignment
+- **Reproducible Experiments**: Built-in result logging, resume capability, and statistical reporting
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+
+- Python 3.9+
+- CUDA 11.8+ (for GPU support)
+
+### Setup
+
 ```bash
-conda create -n ad python=3.9 -y
-conda activate ad
+# Clone the repository
+git clone https://github.com/your-org/WSADBench.git
+cd WSADBench
 
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-pip3 install torch torchvision torchaudio
-pip install tf-nightly
+# Create conda environment
+conda create -n wsad python=3.9 -y
+conda activate wsad
+
+# Install PyTorch (adjust CUDA version as needed)
+pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu118
+
+# Install dependencies
 pip install -r requirements.txt
-pip install pytorchvideo
-pip install opencv-python
+pip install pytorchvideo opencv-python
 ```
 
-2. 配置数据集路径（详见下方数据集配置说明）
+Alternatively, use the provided setup script:
 
-### 运行实验
-
-#### 表格数据实验
 ```bash
-# 运行单个模型
-python run_experiment.py --models IForest --data_type tabular
-
-# 运行多个模型
-python run_experiment.py --models IForest AABiGAN CRGAN --data_type tabular
-
-# 指定其他参数
-python run_experiment.py --models IForest --seeds 5 --processes 4 --data_type tabular
+bash setup.sh
 ```
 
-#### 视频数据实验
+---
+
+## 🏃 Quick Start
+
+### Tabular Experiments
+
 ```bash
-python run_experiment.py --models Sultani --datasets UCF_Crime --n_jobs 1 --rla_list 1.0  --seed_list 0  --data_type video
+# Run a single model on classical tabular datasets
+python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 1.0
 
-# 使用6号和7号两块gpu，并行跑2个任务跑Sultani 这个模型设置，跑10个seed。
-python run_experiment.py --models Sultani  --datasets UCF_Crime --n_jobs 2 --rla_list 1.0  --data_type video  --gpus 6,7
+# Run multiple models with different labeled anomaly ratios
+python run_experiment.py \
+    --data_type tabular_classical \
+    --models DeepSAD DevNet FEAWAD \
+    --rla_list 0.01 0.05 0.1 0.5 1.0 \
+    --n_jobs 4
 
+# Run with custom seeds
+python run_experiment.py \
+    --data_type tabular_classical \
+    --models DevNet \
+    --seed_list 1 2 3 4 5
 ```
 
-## 📊 支持的模型
+### Video Experiments
 
-### 表格数据模型（已完成）
+```bash
+# Run video anomaly detection
+python run_experiment.py \
+    --data_type video \
+    --models Sultani \
+    --datasets UCF_Crime \
+    --rla_list 1.0 \
+    --n_jobs 1 \
+    --gpus 0
 
-#### 传统机器学习模型
-- **PyOD包模型**: IForest, OCSVM, ABOD, CBLOF, COF, COPOD, ECOD, FeatureBagging, HBOS, KNN, LOF, PCA, AutoEncoder等20+种模型
+# Multi-GPU parallel execution
+python run_experiment.py \
+    --data_type video \
+    --models Sultani \
+    --datasets UCF_Crime \
+    --n_jobs 2 \
+    --rla_list 1.0 \
+    --gpus 0,1
+```
 
-#### 深度学习模型
-- **AABiGAN**: Adversarially Learned Anomaly Detection with BiGAN
-- **CRGAN**: Consistent Regularization for Generative Adversarial Networks  
-- **RoSAS**: Deep Semi-Supervised Anomaly Detection
-- **FEAWAD**: Feature Encoding with AutoEncoders for Weakly-supervised Anomaly Detection
-- **DeepSAD**: Deep Semi-supervised Anomaly Detection
-- **DevNet**: Deep Anomaly Detection with Deviation Networks
-- **DAGMM**: Deep Autoencoding Gaussian Mixture Model
-- **PReNet**: Pairwise Relation Network
+### Resume Interrupted Experiments
 
-### 视频数据模型
+```bash
+# WSADBench automatically skips completed experiments
+python run_experiment.py --data_type tabular_classical --models DevNet
 
-#### 已实现
-- **Sultani**: Real-world Anomaly Detection in Surveillance Videos (MIL-based)
+# Force re-run all experiments
+python run_experiment.py --data_type tabular_classical --models DevNet --NO_RESUME
+```
 
-#### TODO
-- 更多基于深度学习的视频异常检测模型
+### Generate Summary Only
 
-## ✅ 已完成功能
+```bash
+# Generate summary from existing results without running experiments
+python run_experiment.py --data_type tabular_classical --dry_summary
+```
 
-### 表格数据（Tabular）
-- ✅ **完整的运行框架**: `run_tabular.py`脚本支持大规模并行实验
-- ✅ **结果整理优化**: 自动生成Excel报告，包含统计分析
-- ✅ **传统模型**: 完整的PyOD包集成（20+种算法）
-- ✅ **深度学习模型**: AABiGAN、CRGAN、RoSAS等弱监督模型
-- ✅ **配置化管理**: YAML配置文件支持模型参数管理
+---
 
-### 视频数据（Video）
-- ✅ **数据预处理**: 并行流式预处理脚本，支持内存和负载平衡控制
-- ✅ **Sultani模型**: 初步实现并可运行，基于MIL的弱监督异常检测
-- ✅ **数据集支持**: UCF-Crime数据集完整支持
+## 📊 Data Preparation
 
-## 🔄 TODO列表
+> **Note**: The complete benchmark datasets (including pre-extracted features for all modalities) will be released after the paper is accepted. For video datasets, we have unified the pretrained models used for feature extraction and re-extracted all features from the original videos to ensure consistency. The feature extraction code is available in this repository.
 
-### 高优先级
-- [ ] **Sultani模型优化**: 调整参数以保持与原文一致的性能
-- [ ] **更多视频数据集**: 添加ShanghaiTech、Avenue等数据集支持
-- [ ] **更多视频模型**: 集成GANomaly、MNAD等视频异常检测模型
-- [ ] **原始图像模态支持**: 打通AABiGAN、CRGAN、RoSAS在原始图像数据集上的加载与运行
+Datasets should be prepared as symbolic links in the `WSADBench/datasets/` directory. See **[DATASETS.md](DATASETS.md)** for detailed instructions on:
 
-### 中优先级
-- [ ] **模型性能基准**: 建立各模型在标准数据集上的性能基准
-- [ ] **实验可视化**: 添加训练过程可视化和结果分析工具
-- [ ] **超参数优化**: 自动化超参数搜索功能
+- Download links for all supported datasets
+- Preprocessing instructions for each data type
+- Directory structure requirements
+- Feature extraction scripts (for CV/NLP features)
 
-### 低优先级
-- [ ] **多模态融合**: 支持文本+图像、视频+音频等多模态异常检测
-- [ ] **在线学习**: 支持流式数据的在线异常检测
-- [ ] **OOD**: 支持样本外异常检测
+**Quick Setup:**
+```bash
+# After downloading datasets, create symlinks
+ln -s /path/to/your/classical_datasets WSADBench/datasets/Classical
+ln -s /path/to/your/video_features WSADBench/datasets/CV_by_I3D
+ln -s /path/to/your/cv_features WSADBench/datasets/CV_by_ResNet18
+```
 
+### Supported Data Types
 
+| Data Type | CLI Flag | Description |
+|-----------|----------|-------------|
+| Classical Tabular | `tabular_classical` | Traditional AD benchmarks (47 datasets) |
+| CV Features (ResNet18) | `tabular_CV_by_ResNet18` | Image features extracted by ResNet18 |
+| CV Features (ViT) | `tabular_CV_by_ViT` | Image features extracted by ViT |
+| NLP Features (BERT) | `tabular_NLP_by_BERT` | Text embeddings from BERT |
+| NLP Features (RoBERTa) | `tabular_NLP_by_RoBERTa` | Text embeddings from RoBERTa |
+| Video | `video` | Video anomaly detection (I3D features) |
+| MIL Bags (Classical) | `classical_bags_inexact` | Classical data in MIL bag format |
+| MIL Bags (CV) | `CV_by_ViT_bags_inexact` | CV features in MIL bag format |
 
-## 📊 实验设置
+---
 
-### 标准实验协议
-- **数据划分**: 训练集70%，测试集30%
-- **交叉验证**: 10个不同随机种子
-- **评估指标**: AUCROC、AUCPR、训练时间、推理时间
-- **弱监督设置**: 支持不同标记异常样本比例（1%, 5%, 10%等）
+## 🤖 Supported Models
 
-### 数据集统计
-- **表格数据集**: 30+个经典异常检测数据集
-- **视频数据集**: UCF-Crime（已支持），ShanghaiTech（规划中）
-- **图像数据集**: MNIST、CIFAR-10、MVTec-AD等（规划中）
+### Key Highlight Models
 
-## 🤝 贡献指南
+| Model | Category | Paper | Description |
+|-------|----------|-------|-------------|
+| **DeepSAD** | Semi-supervised | [ICLR 2020](https://arxiv.org/abs/1906.02614) | Deep semi-supervised anomaly detection via one-class classification |
+| **DevNet** | Weakly-supervised | [KDD 2019](https://arxiv.org/abs/1908.03909) | Deviation networks for anomaly detection with limited supervision |
+| **FEAWAD** | Weakly-supervised | [KDD 2021](https://arxiv.org/abs/2106.07051) | Feature encoding with autoencoders for weakly-supervised AD |
+| **Sultani** | Video MIL | [CVPR 2018](https://arxiv.org/abs/1801.04264) | Real-world anomaly detection in surveillance videos |
+| **IForest** | Unsupervised | [ICDM 2008] | Isolation Forest - classical baseline |
 
-欢迎贡献新的模型实现、数据集支持或功能改进：
+### All Supported Models
 
-1. Fork本项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`) 
-5. 创建Pull Request
+#### Weakly-Supervised & Semi-Supervised Methods (Tabular)
 
-### 添加新模型
+| Model | Description |
+|-------|-------------|
+| DeepSAD | Deep semi-supervised anomaly detection |
+| DevNet | Deep anomaly detection with deviation networks |
+| FEAWAD | Feature encoding with autoencoders |
+| PReNet | Pairwise relation network for anomaly detection |
+| REPEN | Representation learning for PU learning |
+| RoSAS | Robust semi-supervised anomaly segmentation |
+| AABiGAN | Adversarially learned anomaly detection with BiGAN |
+| CRGAN | Consistent regularization for GANs |
+| DAGMM | Deep autoencoding Gaussian mixture model |
+| DualMGAN | Dual-MGAN for anomaly detection |
+| NTL | Neutral active learning |
+| TargAD | Targeted anomaly detection |
+| PUMA | PU-learning based multi-model anomaly detection |
+| LimiX | 16M retrieval-based model |
 
-1. 在`WSADBench/baseline/`下创建模型目录
-2. 实现标准接口：`fit()`、`predict_score()`方法
-3. 添加配置文件到`WSADBench/model_configs/`
-4. 更新文档和测试
+#### Video Anomaly Detection
 
-## 📝 引用
+| Model | Description |
+|-------|-------------|
+| Sultani | MIL-based weakly supervised video anomaly detection |
+| RTFM | Robust temporal feature magnitude |
+| MGFN | Multi-graph fusion network |
+| URDMU | Unified representation for detection of multiple anomalies |
+| VadClip | Vision-language video anomaly detection |
+| ZhongGCNAD | Graph convolutional network for AD |
+| GANomaly | GAN-based anomaly detection |
 
-如果您在研究中使用了WSADBench，请引用：
+#### Tabular Specialized Models
+
+| Model | Description |
+|-------|-------------|
+| FTTransformer | Feature-wise transformer for tabular data |
+| TabNet | Tabular neural network with sequential attention |
+| TabPFN | Tabular prior-data fitted network |
+| TabR_S | Tabular regression with scaled embeddings |
+| TabMCls | Tabular multi-classifier approach |
+| AnoDDAE | Anomaly detection with denoising diffusion autoencoders |
+
+#### Unsupervised Methods (via PyOD)
+
+| Model | Description |
+|-------|-------------|
+| IForest | Isolation Forest |
+| LOF | Local Outlier Factor |
+| OCSVM | One-Class SVM |
+| KNN | k-Nearest Neighbors |
+| HBOS | Histogram-based Outlier Score |
+| PCA | Principal Component Analysis |
+| AutoEncoder | Autoencoder reconstruction |
+| VAE | Variational Autoencoder |
+| ECOD | Empirical Cumulative Distribution |
+| COPOD | Copula-based Outlier Detection |
+| CBLOF | Cluster-based Local Outlier Factor |
+| LUNAR | Linear Unbounded Anomaly Rating |
+| MCD | Minimum Covariance Determinant |
+| SOS | Stochastic Outlier Selection |
+| AAE | Adversarial Autoencoder |
+| DeepSVDD | Deep Support Vector Data Description |
+
+---
+
+## 📁 Project Structure
+
+```
+WSADBench/
+├── run_experiment.py          # Main entry point
+├── requirements.txt           # Python dependencies
+├── setup.sh                   # Environment setup script
+├── LICENSE                    # MIT License
+├── README.md                  # This file
+├── DATASETS.md                # Dataset preparation guide
+│
+├── WSADBench/                 # Core package
+│   ├── baseline/              # Model implementations
+│   │   ├── DeepSAD/           # DeepSAD implementation
+│   │   ├── DevNet/            # DevNet implementation
+│   │   ├── FEAWAD/            # FEAWAD implementation
+│   │   ├── Sultani/           # Sultani video AD
+│   │   ├── PyOD.py            # PyOD wrapper (20+ models)
+│   │   └── ...                # 30+ other models
+│   │
+│   ├── datasets/              # Dataset handling
+│   │   ├── data_generator.py  # Data generation & loading
+│   │   ├── cv_data_generator.py # CV dataset handling
+│   │   ├── dataset_configs/   # Dataset configuration (YAML)
+│   │   └── dataset_support/   # Video preprocessing utilities
+│   │
+│   ├── model_configs/         # Model hyperparameters (YAML)
+│   │   ├── tabular/           # Tabular model configs
+│   │   ├── video/             # Video model configs
+│   │   └── tabular_bags_inexact/ # MIL bag configs
+│   │
+│   ├── myutils.py             # Utility functions
+│   └── build_bags.py          # Instance → MIL bag conversion
+│
+├── common_utils/              # Shared utilities
+│   ├── baseline_utils.py      # Video-specific utilities
+│   └── argTypes.py            # Argument type parsing
+│
+└── results/                   # Experiment outputs (git-ignored)
+```
+
+---
+
+## ⚙️ Advanced Usage
+
+### Key CLI Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--data_type` | Data modality (required) | - |
+| `--models` | Model names to run | - |
+| `--datasets` | Specific datasets | All available |
+| `--rla_list` | Labeled anomaly ratios | [1.0] |
+| `--eln_list` | Labeled normal ratios (relative to RLA) | [0.01, 0.05, ...] |
+| `--ru_list` | Unlabeled sample ratios | [1.0] |
+| `--flip_nr_list` | Label noise (normal→anomaly) | [0.0] |
+| `--flip_ar_list` | Label noise (anomaly→normal) | [0.0] |
+| `--target_for_unlabeled` | How to handle unlabeled samples | `fill_unlabel_0` |
+| `--noise_type` | Noise type for experiments | None |
+| `--is_cleanlab` | Enable cleanlab data cleaning | `false` |
+| `--seed_list` | Random seeds | [1-10] |
+| `--n_jobs` | Parallel jobs | 1 |
+| `--gpus` | GPU IDs (e.g., "0,1,2") | All available |
+| `--output_dir` | Results directory | results/{data_type} |
+| `--NO_RESUME` | Force re-run completed experiments | False |
+| `--dry_summary` | Only generate summary | False |
+| `--DEBUG` | Enable debug mode | False |
+| `--exp_note` | Experiment note for tracking | None |
+
+### Weak Supervision Settings Explained
+
+WSADBench supports comprehensive weak supervision configurations:
+
+- **RLA (Ratio of Labeled Anomalies)**: Proportion of anomalies that are labeled in training data
+- **ELN (Ratio of Labeled Normal samples)**: Proportion of labeled normal samples relative to labeled anomalies
+- **RU (Ratio of Unlabeled)**: Proportion of unlabeled samples in training data
+- **Label Contamination**: Simulate annotation errors with `flip_nr_list` and `flip_ar_list`
+
+```bash
+# Example: 10% labeled anomalies, 50% unlabeled data, 5% label noise
+python run_experiment.py \
+    --data_type tabular_classical \
+    --models DevNet \
+    --rla_list 0.1 \
+    --ru_list 0.5 \
+    --flip_nr_list 0.05 \
+    --flip_ar_list 0.05
+```
+
+### Custom Model Configuration
+
+Model hyperparameters are stored in `WSADBench/model_configs/{data_type}/{model_name}.yaml`:
+
+```yaml
+# Example: WSADBench/model_configs/tabular/DeepSAD.yaml
+model_class: "WSADBench.baseline.DeepSAD.run.DeepSAD"
+parameters:
+  latent_dim: 32
+  hidden_dims: [64, 32]
+  epochs: 100
+  batch_size: 256
+  lr: 0.001
+```
+
+### Adding New Models
+
+1. Create a new directory in `WSADBench/baseline/YourModel/`
+2. Implement `run.py` with a class that has:
+   - `__init__(self, seed, **kwargs)`: Initialize model
+   - `fit(self, X, y, ...)`: Training method
+   - `predict_score(self, X, ...)`: Return anomaly scores
+3. Create config file `WSADBench/model_configs/{data_type}/YourModel.yaml`
+4. Add model to `ModelRegistry` in `run_experiment.py`
+
+### Output Format
+
+Results are saved in JSONL format:
+
+```
+results/
+└── {data_type}/
+    ├── detail/
+    │   └── {model_name}/
+    │       ├── {model_name}_results.jsonl  # Individual results
+    │       └── model_stats.json            # Model statistics
+    └── summary/
+        └── summary.xlsx                     # Aggregated statistics
+```
+
+---
+
+## 📝 Citation
+
+If you use WSADBench in your research, please cite:
 
 ```bibtex
-@misc{wsadbench2024,
-  title={WSADBench: A Comprehensive Benchmark for Weakly-Supervised Anomaly Detection},
-  author={WSADBench Team},
-  year={2024},
-  howpublished={\url{https://github.com/your-repo/WSADBench}}
+@article{wsadbench2025,
+  title={Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark},
+  author={WSADBench Authors},
+  journal={arXiv preprint},
+  year={2025}
 }
 ```
 
-## 📄 许可证
+---
 
-本项目基于MIT许可证开源 - 详见 [LICENSE](LICENSE) 文件。
+## 📄 License
 
-## 📞 联系方式
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-如有问题或建议，请通过以下方式联系：
-- 提交Issue到GitHub仓库
-- 发邮件至项目维护者
+---
 
+## 🙏 Acknowledgments
 
+- [PyOD](https://github.com/yzhao062/pyod) - Python Outlier Detection library
+- [ADBench](https://github.com/Minqi824/ADBench) - Anomaly Detection Benchmark
+
+---
+
+## 📞 Contact
+
+For questions and issues, please open an issue on GitHub.
