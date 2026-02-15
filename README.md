@@ -168,80 +168,66 @@ ln -s /path/to/your/cv_features WSADBench/datasets/CV_by_ResNet18
 
 ## 🤖 Supported Models
 
-### Key Highlight Models
+### Weakly-Supervised (Instance)
 
-| Model | Category | Paper | Description |
-|-------|----------|-------|-------------|
-| **DeepSAD** | Semi-supervised | [ICLR 2020](https://arxiv.org/abs/1906.02614) | Deep semi-supervised anomaly detection via one-class classification |
-| **DevNet** | Weakly-supervised | [KDD 2019](https://arxiv.org/abs/1908.03909) | Deviation networks for anomaly detection with limited supervision |
-| **FEAWAD** | Weakly-supervised | [KDD 2021](https://arxiv.org/abs/2106.07051) | Feature encoding with autoencoders for weakly-supervised AD |
-| **Sultani** | Video MIL | [CVPR 2018](https://arxiv.org/abs/1801.04264) | Real-world anomaly detection in surveillance videos |
-| **IForest** | Unsupervised | [ICDM 2008] | Isolation Forest - classical baseline |
+| Model | Category | Description |
+|-------|----------|-------------|
+| DevNet | Score Learning | Deviation networks for anomaly detection with limited supervision |
+| DeepSAD | Score Learning | Deep semi-supervised anomaly detection via one-class classification |
+| PReNet | Score Learning | Pairwise relation network for anomaly detection |
+| REPEN | Repr. Learning | Representation learning for PU learning |
+| XGBOD | Repr. Learning | Feature augmentation for outlier detection |
+| RoSAS | Data Aug. | Robust semi-supervised anomaly segmentation |
+| Dual-MGAN | Data Aug. | Dual-MGAN for anomaly detection |
+| FEAWAD | Reconstruction | Feature encoding with autoencoders for weakly-supervised AD |
+| DDAE | Diffusion DAE | Anomaly detection with denoising diffusion autoencoders |
+| SOEL-NTL | Pseudo-Labeling | Self-training with outlier exposure |
+| AA-BiGAN | GAN-based | Adversarially learned anomaly detection with BiGAN |
+| GAnomaly | GAN-based | GAN-based anomaly detection |
 
-### All Supported Models
+### Unsupervised (Instance)
 
-#### Weakly-Supervised & Semi-Supervised Methods (Tabular)
+| Model | Category | Description |
+|-------|----------|-------------|
+| IForest | Isolation-based | Isolation Forest - classical baseline |
+| AutoEncoder | Reconstruction | Autoencoder reconstruction error |
+| VAE | Reconstruction | Variational Autoencoder |
+| PCA | Reconstruction | Principal Component Analysis |
+| DeepSVDD | Deep One-class | Deep Support Vector Data Description |
+| ECOD | Probabilistic | Empirical Cumulative Distribution |
+| CBLOF | Cluster-based | Cluster-based Local Outlier Factor |
+| LOF | Density-based | Local Outlier Factor |
+| LUNAR | GNN-based | Graph neural network for anomaly detection |
 
-| Model | Description |
-|-------|-------------|
-| DeepSAD | Deep semi-supervised anomaly detection |
-| DevNet | Deep anomaly detection with deviation networks |
-| FEAWAD | Feature encoding with autoencoders |
-| PReNet | Pairwise relation network for anomaly detection |
-| REPEN | Representation learning for PU learning |
-| RoSAS | Robust semi-supervised anomaly segmentation |
-| AABiGAN | Adversarially learned anomaly detection with BiGAN |
-| CRGAN | Consistent regularization for GANs |
-| DAGMM | Deep autoencoding Gaussian mixture model |
-| DualMGAN | Dual-MGAN for anomaly detection |
-| NTL | Neutral active learning |
-| TargAD | Targeted anomaly detection |
-| PUMA | PU-learning based multi-model anomaly detection |
-| LimiX | 16M retrieval-based model |
+### Weakly-Supervised (Bag)
 
-#### Video Anomaly Detection
+| Model | Category | Description |
+|-------|----------|-------------|
+| Sultani | Vanilla MIL | MIL-based weakly supervised video anomaly detection |
+| RTFM | Magnitude MIL | Robust temporal feature magnitude |
+| MGFN | Magnitude MIL | Multi-graph fusion network |
+| AR-Net | Dynamic MIL | Dynamic MIL for video anomaly detection |
+| VadCLIP | Language-Guided MIL | Vision-language video anomaly detection |
+| UR-DMU | Uncertainty-Aware MIL | Unified representation for detection of multiple anomalies |
+| GCN-Anomaly | Label Denoising | Graph convolutional network for anomaly detection |
+| PUMA | PU MIL | PU-learning based multi-model anomaly detection |
 
-| Model | Description |
-|-------|-------------|
-| Sultani | MIL-based weakly supervised video anomaly detection |
-| RTFM | Robust temporal feature magnitude |
-| MGFN | Multi-graph fusion network |
-| URDMU | Unified representation for detection of multiple anomalies |
-| VadClip | Vision-language video anomaly detection |
-| ZhongGCNAD | Graph convolutional network for AD |
-| GANomaly | GAN-based anomaly detection |
+### Supervised (Instance)
 
-#### Tabular Specialized Models
+| Model | Category | Description |
+|-------|----------|-------------|
+| XGBoost | GBDT | Gradient boosting decision trees |
+| CatBoost | GBDT | Categorical boosting |
+| FTTransformer | Deep (Sup.) | Feature-wise transformer for tabular data |
+| TabM | Deep (Sup.) | Tabular deep learning model |
+| TabR-S | Deep (Sup.) | Tabular regression with scaled embeddings |
 
-| Model | Description |
-|-------|-------------|
-| FTTransformer | Feature-wise transformer for tabular data |
-| TabNet | Tabular neural network with sequential attention |
-| TabPFN | Tabular prior-data fitted network |
-| TabR_S | Tabular regression with scaled embeddings |
-| TabMCls | Tabular multi-classifier approach |
-| AnoDDAE | Anomaly detection with denoising diffusion autoencoders |
+### Foundation Models (Instance)
 
-#### Unsupervised Methods (via PyOD)
-
-| Model | Description |
-|-------|-------------|
-| IForest | Isolation Forest |
-| LOF | Local Outlier Factor |
-| OCSVM | One-Class SVM |
-| KNN | k-Nearest Neighbors |
-| HBOS | Histogram-based Outlier Score |
-| PCA | Principal Component Analysis |
-| AutoEncoder | Autoencoder reconstruction |
-| VAE | Variational Autoencoder |
-| ECOD | Empirical Cumulative Distribution |
-| COPOD | Copula-based Outlier Detection |
-| CBLOF | Cluster-based Local Outlier Factor |
-| LUNAR | Linear Unbounded Anomaly Rating |
-| MCD | Minimum Covariance Determinant |
-| SOS | Stochastic Outlier Selection |
-| AAE | Adversarial Autoencoder |
-| DeepSVDD | Deep Support Vector Data Description |
+| Model | Category | Description |
+|-------|----------|-------------|
+| TabPFN | Found. Model | Descriminative Foundation Model |
+| LimiX | Found. Model | Generative Foundation Model |
 
 ---
 
