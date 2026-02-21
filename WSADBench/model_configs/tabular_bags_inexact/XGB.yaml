@@ -1,6 +1,0 @@
-# 模型类路径
-model_class: WSADBench.baseline.Supervised.supervised
-
-# 模型参数
-parameters:
-  model_name: "XGB"

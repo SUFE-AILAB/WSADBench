@@ -1,7 +1,7 @@
-PREPROCESS:  # /data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2
-    INPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/'
-    OUTPUT_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/CV_by_I3D/UCSD_Ped2/'
-    RAW_DATA_DIR: '/data/coding/wsad/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/raw_data/'
+PREPROCESS:  # /gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2
+    INPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/'
+    OUTPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/CV_by_I3D/UCSD_Ped2/'
+    RAW_DATA_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/UCSD_Ped2/raw_data/'
 
     # 复制split文件和标注文件
     COPY:

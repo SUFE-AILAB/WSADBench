@@ -303,11 +303,11 @@ class FrameToVideoConverter:
         raw_list = []
         try:
             with open(
-                    r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_train.txt',
+                    r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_train.txt',
                     'r') as f:
                 for line in f:
                     raw_list.append(line.strip())
-            with open(r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_test.txt',
+            with open(r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_test.txt',
                       'r') as f:
                 for line in f:
                     raw_list.append(line.strip())

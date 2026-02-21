@@ -14,8 +14,8 @@ from typing import Tuple, Dict, Any, Optional, List
 import time
 # from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
-logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='sultani')
-from common_utils.baseline_utils import get_gt
+# logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='sultani')
+from common_utils.baseline_utils import get_gt, write_jsonl
 
 
 def mil_loss(y_pred, batch_size, sparsity_weight=0.00008, smoothness_weight=0.00008):
@@ -104,27 +104,6 @@ def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_i
     # np.save("frame_label/xd_frame_gt.npy", frame_truth)
     return frame_scores, frame_truth
 
-def _process_tabular_scores(scores, data_shape, data):
-        """处理tabular_inexact分数的特殊逻辑：从bag级别还原到样本级别"""
-        n_bags, n_samples = data_shape  # 取出 n_bags 和 n_samples
-
-        # 平均每个样本，获得每个袋的分数
-        scores = scores.reshape(n_bags, n_samples)
-        scores = np.mean(scores, axis=1)
-
-        # 还原 bag 级别的 score 为样本级别的 score
-        y_test_idx = data["y_test_idx"]
-        y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
-
-        sample_truth = y_test_gt
-        sample_scores = scores.repeat(n_samples)
-        # 对齐长度
-        common_length = min(len(sample_truth), len(sample_scores))
-        sample_scores = sample_scores[:common_length]
-        sample_truth = sample_truth[:common_length]
-
-        return sample_scores, sample_truth
-
 def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
                        verbose=True, normal_loader=None, anomaly_loader=None):
     """
@@ -156,7 +135,7 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
         print(f"开始训练Sultani模型，共{epochs}轮...")
         print(f"设备: {device}")
         print(f"稀疏性权重: {sparsity_weight}, 平滑性权重: {smoothness_weight}")
-    # X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
+    X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     best_epoch = -1
     best_auc = 0.0
     best_ap = 0
@@ -164,7 +143,7 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
     best_auc_v2 = 0.0
     best_ap_v2 = 0
 
-    logger.info('start train ...')
+    # logger.info('start train ...')
     for epoch in range(epochs):
         epoch_start_time = time.time()
         epoch_loss = 0.0
@@ -214,7 +193,7 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
         
         if verbose:
             print(f'Epoch {epoch+1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
-        if X_test is not None and trainer.is_test:
+        if X_test is not None and trainer.is_test and epoch == epochs - 1:
             trainer.fitted = True
             # 处理video分数的特殊逻辑：从clip级别还原到帧级别
             with torch.no_grad():
@@ -223,15 +202,10 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
                 gt = get_gt(len(prob))
                 test_auc_v2 = roc_auc_score(gt, prob)
                 test_ap_v2 = average_precision_score(gt, prob)
-                #为适配tabular_inexact数据集修改
-                n_bags, n_samples,_dim = X_test.shape
-                data_shape = (n_bags, n_samples)
 
-                # frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt,
-                #                                                   y_test_gt_idx,
-                #                                                   num_clip_frames)
-
-                frame_scores, frame_truth = _process_tabular_scores(scores, data_shape, X_test)
+                frame_scores, frame_truth = _process_video_scores(scores, video_shape, y_test_idx, y_test_gt,
+                                                                  y_test_gt_idx,
+                                                                  num_clip_frames)
                 test_auc = roc_auc_score(frame_truth, frame_scores)
                 test_ap = average_precision_score(frame_truth, frame_scores)
                 if best_auc < test_auc:
@@ -242,10 +216,12 @@ def fit_sultani(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                logger.info(
-                    f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logger.info(
-                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+                write_jsonl(model_name='sultani', epochs=epoch,seed =trainer.seed, auc=test_auc, ap=test_ap, res_type='frame',)
+                write_jsonl(model_name='sultani', epochs=epoch,seed =trainer.seed, auc=test_auc_v2, ap=test_ap_v2, res_type='clip',)
+                # logger.info(
+                #     f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                # logger.info(
+                #     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
 
     if verbose:
         print("训练完成！")

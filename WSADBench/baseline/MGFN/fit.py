@@ -16,9 +16,9 @@ from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 
-from common_utils.baseline_utils import get_gt
+from common_utils.baseline_utils import get_gt, write_jsonl
 
-logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='mgfn')
+logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='mgfn')
 def sparsity(arr, batch_size, lamda2):
     loss = torch.mean(torch.norm(arr, dim=0))
     return lamda2 * loss
@@ -221,7 +221,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
 
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
-        if X_test is not None and trainer.is_test:
+        if X_test is not None and trainer.is_test and epoch == epochs-1:
             trainer.fitted = True
             # 处理video分数的特殊逻辑：从clip级别还原到帧级别
             with torch.no_grad():
@@ -243,6 +243,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
+                write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc, ap=test_ap, res_type='frame' )
+                write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc_v2, ap=test_ap_v2, res_type='clip' )
                 logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
                 logger.info(
                     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")

@@ -53,8 +53,8 @@ class SemiDeepGenerativeTrainer(BaseTrainer):
         for epoch in range(self.n_epochs):
 
             scheduler.step()
-            if epoch in self.lr_milestones:
-                logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_lr()[0]))
+            # if epoch in self.lr_milestones:
+            #     logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_lr()[0]))
 
             epoch_loss = 0.0
             n_batches = 0

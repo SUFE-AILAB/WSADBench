@@ -1,4 +1,8 @@
 import os
+import pickle
+
+from common_utils.baseline_utils import video_data2tabular_data
+
 # 限制GPU
 # os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 # print("当前 CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES", "未设置"))
@@ -7,12 +11,11 @@ import os
 import time
 import gc
 import argparse
-# from cv2 import log
 import numpy as np
 import pandas as pd
 import yaml
 import json
-from sklearn.model_selection import KFold
+
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -63,7 +66,9 @@ class ModelRegistry:
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
             "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
             "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
+            "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
+            "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
@@ -85,7 +90,7 @@ class ModelRegistry:
             "PCA": "WSADBench.baseline.PyOD.PYOD",
             "CBLOF": "WSADBench.baseline.PyOD.PYOD",
             "VAE": "WSADBench.baseline.PyOD.PYOD",
-            
+
             "OCSVM": "WSADBench.baseline.PyOD.PYOD",
             "KNN": "WSADBench.baseline.PyOD.PYOD",
             "HBOS": "WSADBench.baseline.PyOD.PYOD",
@@ -93,7 +98,7 @@ class ModelRegistry:
             "SOS": "WSADBench.baseline.PyOD.PYOD",
             "AAE": "WSADBench.baseline.PyOD.PYOD",
             "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
-            
+
 
 
         }

@@ -300,6 +300,7 @@ class model_lstm(torch.nn.Module):
 
 #统一接口  包含6中预定义架构
 def model_generater(model_name, feature_size,seq_len=None):    #seq_len为lstm添加  #目前是认定feature_size与n_feature相同
+    print(f'model_name:{model_name}')
     if model_name == 'model_single':
         model = Model_single(feature_size)  # for anomaly detection, only one class, anomaly, is needed.
     elif model_name == 'model_mean':

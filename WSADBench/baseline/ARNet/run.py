@@ -28,6 +28,7 @@ class ARNet:
             input_dim:int=2048,
             dropout: float = 0.7,
             model_name: str =None,
+            base_model_name: str=None,
             # n_feature: int=2048,
             # feature_size:int=2048,
             # 训练参数
@@ -69,6 +70,7 @@ class ARNet:
         self.input_dim = input_dim
         self.dropout = dropout
         self.model_name = model_name
+        self.base_model_name = base_model_name
         # self.n_feature = n_feature
         # self.feature_size = feature_size
         self.epochs = epochs
@@ -104,10 +106,10 @@ class ARNet:
         if self.model is None:
             # 创建模型
             
-            if self.model_name == "model_lstm":
-                self.model = model_generater(model_name=self.model_name,feature_size=self.input_dim,seq_len=self.seq_len).to(self.device)
+            if self.base_model_name == "model_lstm":
+                self.model = model_generater(model_name=self.base_model_name,feature_size=self.input_dim,seq_len=self.seq_len).to(self.device)
             else:
-                self.model = model_generater(model_name=self.model_name, feature_size=self.input_dim).to(self.device)
+                self.model = model_generater(model_name=self.base_model_name, feature_size=self.input_dim).to(self.device)
 
             # 创建优化器
             self.optimizer = optim.Adam(
@@ -158,7 +160,7 @@ class ARNet:
             model=self.model,
             trainer=self,
 
-            X_test=None,
+            X_test=X_test,
             # segments_per_video=self.segments_per_video,
             optimizer=self.optimizer,
             epochs=self.epochs,

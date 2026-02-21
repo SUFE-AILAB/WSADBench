@@ -25,8 +25,7 @@ from pyod.models.rod import ROD
 from pyod.models.sod import SOD
 from pyod.models.sos import SOS
 from pyod.models.vae import VAE
-# from pyod.models.auto_encoder_torch import AutoEncoder
-from pyod.models.auto_encoder import AutoEncoder
+from pyod.models.auto_encoder_torch import AutoEncoder
 from pyod.models.so_gaal import SO_GAAL
 from pyod.models.mo_gaal import MO_GAAL
 from pyod.models.xgbod import XGBOD
@@ -60,7 +59,7 @@ class PYOD():
             self.model_dict.update({'ALAD': ALAD, 'DIF': DIF, 'SO_GAAL': SO_GAAL, 'LUNAR': LUNAR})
         except:
             pass
-    
+
 
         self.tune = tune
 
@@ -185,7 +184,7 @@ class PYOD():
 
                     elif self.model_name == 'DeepSVDD':
                         model = self.model_dict[self.model_name](X_train.shape[1],epochs=param).fit(X_train)
-                    
+
                     elif self.model_name in self.model_dict:
                         model = self.model_dict[self.model_name]().fit(X_train)
 
@@ -295,7 +294,7 @@ class PYOD():
 
             elif self.model_name == 'DeepSVDD':
                 self.model = self.model_dict[self.model_name](X_train.shape[1]).fit(X_train)
-                    
+
             elif self.model_name in self.model_dict:
                 self.model = self.model_dict[self.model_name]().fit(X_train)
 
@@ -310,10 +309,9 @@ class PYOD():
                 self.model = self.model_dict[self.model_name]()
                 self.model.fit(X_train, y_train)
                 return self
-            
+
             # unsupervised method would ignore the y labels
-            self.model = self.model_dict[self.model_name]()
-            self.model.fit(X_train)
+            self.model = self.model_dict[self.model_name]().fit(X_train, y_train)
 
         return self
 

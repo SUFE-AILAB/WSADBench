@@ -17,7 +17,8 @@ from WSADBench.myutils import Utils
 from WSADBench.baseline.Sultani.model import SultaniLearner
 # from WSADBench.baseline.Sultani.fit import fit_sultani_main
 from WSADBench.baseline.Sultani.fit import fit_sultani as fit_main
-from common_utils.baseline_utils import fit_utils
+from common_utils.baseline_utils import fit_utils, fit_utils_mil
+
 
 class Sultani:
     """
@@ -47,6 +48,7 @@ class Sultani:
         scheduler_milestones: List[int] = None,
         verbose: bool = True,
         is_test: bool = False,
+            **kwargs  # 接受多余参数
     ):
         """
         初始化Sultani模型
@@ -145,18 +147,36 @@ class Sultani:
         # 初始化模型
         self._init_model()
         # 训练模型
-        fit_dict = fit_utils(trainer=self,
-                             X_test=X_test,
-                             # y_test=y_test,
-                             X_train=X,
-                             y_train=y,
-                             model=self.model,
-                             optimizer=self.optimizer,
-                             epochs=self.epochs,
-                             batch_size=self.batch_size,
-                             device=self.device,
-                             verbose=self.verbose,
-                             clip_num=vid_source_clips_num, crops_num=crops_num)
+        if vid_source_clips_num is not None:  # 是video 数据 classical_bags_inexact
+            fit_dict = fit_utils(trainer=self,
+                                 X_test=X_test,
+                                 # y_test=y_test,
+                                 X_train=X,
+                                 y_train=y,
+                                 model=self.model,
+                                 optimizer=self.optimizer,
+                                 epochs=self.epochs,
+                                 batch_size=self.batch_size,
+                                 device=self.device,
+                                 verbose=self.verbose,
+                                 clip_num=vid_source_clips_num, crops_num=crops_num)
+
+        else:
+            fit_dict = fit_utils_mil(trainer=self,
+                                     X_test=X_test,
+                                     # y_test=y_test,
+                                     X_train=X,
+                                     y_train=y,
+                                     model=self.model,
+                                     optimizer=self.optimizer,
+                                     epochs=self.epochs,
+                                     batch_size=self.batch_size,
+                                     device=self.device,
+                                     verbose=self.verbose,
+                                     exp_note="tabular_inexact",
+                                     seg=32,
+                                     clip_num=vid_source_clips_num, crops_num=crops_num)
+
         self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
                                          fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
                                          fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])

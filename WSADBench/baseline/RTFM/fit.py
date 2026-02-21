@@ -6,7 +6,7 @@ MGFN方法训练逻辑
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import time
-from common_utils.baseline_utils import _process_video_scores, get_gt
+from common_utils.baseline_utils import _process_video_scores, get_gt, write_jsonl
 
 from tqdm import tqdm
 
@@ -17,7 +17,7 @@ torch.set_default_tensor_type('torch.FloatTensor')
 from torch.nn import MSELoss
 # from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
-logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='rtfm')
+logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='rtfm')
 
 
 def sparsity(arr,  lamda2):
@@ -200,7 +200,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
         print(f'epoch:{ epoch}, lr:{ optimizer.param_groups[0]["lr"]:.6f}')
         trainer.fitted = True
         trainer.model.eval()
-        if X_test is not None and trainer.is_test:
+        if X_test is not None and trainer.is_test and epoch == epochs - 1:  # 最后一个epoch测试
             with torch.no_grad():
                 scores = trainer.predict_proba(X_test)  # 得分696270
                 prob = np.repeat(scores, 16)
@@ -220,6 +220,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
+                write_jsonl('rtfm', epoch, trainer.seed, test_auc, test_ap,  res_type='frame')
+                write_jsonl('rtfm', epoch, trainer.seed, test_auc_v2, test_ap_v2, res_type='clip')
                 logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
                 logger.info(
                     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")

@@ -7,7 +7,7 @@ CPU处理完一个视频立即交给GPU，不等待批次完成
 
 import os
 # 限制gpu
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 根据实际情况设置可用的GPU设备
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # 根据实际情况设置可用的GPU设备
 print('connected..')
 import sys
 import argparse
@@ -914,7 +914,7 @@ class StreamingVideoPreprocessor:
             os.makedirs(output_dir, exist_ok=True)
 
             # 复制指定的文件和目录
-            if "COPY" in self.config["PREPROCESS"]:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/source_datasets/shanghaitech/splits
+            if "COPY" in self.config["PREPROCESS"]:  # /gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/source_datasets/shanghaitech/splits
                 for src, dst in self.config["PREPROCESS"]["COPY"]:
                     src_path = os.path.join(input_dir, src)
                     dst_path = os.path.join(output_dir, dst)

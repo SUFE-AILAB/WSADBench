@@ -7,25 +7,25 @@ from itertools import cycle
 
 
 def fit_aabigan(
-    X_train,
-    y_train,
-    mask,
-    X_aux,
-    generator,
-    encoder,
-    discriminator,
-    optimizer_G,
-    optimizer_E,
-    optimizer_D,
-    epochs,
-    batch_size,
-    latent_dim,
-    device,
-    alpha=1.0,
-    beta=1.0,
-    gamma=1.0,
-    modal="tabular",
-    verbose=True,
+        X_train,
+        y_train,
+        mask,
+        X_aux,
+        generator,
+        encoder,
+        discriminator,
+        optimizer_G,
+        optimizer_E,
+        optimizer_D,
+        epochs,
+        batch_size,
+        latent_dim,
+        device,
+        alpha=1.0,
+        beta=1.0,
+        gamma=1.0,
+        modal="tabular",
+        verbose=True,
 ):
     """
     训练AABiGAN模型
@@ -58,8 +58,8 @@ def fit_aabigan(
     # labeled_anomaly_mask = y_train == 1
     # unlabeled_mask = y_train == 0
 
-    X_labeled_anomaly = X_train[mask==1]   #有标签的样本，根据设定可含有正常样本
-    X_unlabeled = X_train[mask==0]
+    X_labeled_anomaly = X_train[mask == 1]  # 有标签的样本，根据设定可含有正常样本
+    X_unlabeled = X_train[mask == 0]
 
     # 创建数据加载器
     if len(X_labeled_anomaly) > 0:
@@ -69,9 +69,9 @@ def fit_aabigan(
         )
     else:
         labeled_loader = None
-    
+
     num_unlabel = X_unlabeled.size(0)
-# 如果样本数小于 batch_size，则简单重复补足
+    # 如果样本数小于 batch_size，则简单重复补足
     if num_unlabel < batch_size:
         repeat_times = (batch_size + num_unlabel - 1) // num_unlabel  # 向上取整
         X_unlabeled = X_unlabeled.repeat((repeat_times, *([1] * (X_unlabeled.dim() - 1))))[:batch_size]
@@ -210,9 +210,9 @@ def fit_aabigan(
 
             # 总损失
             g_loss = (
-                alpha * (g_loss_adv_real + g_loss_adv_fake)
-                + beta * g_loss_recon
-                + gamma * (e_loss_recon + anomaly_loss + aux_loss)
+                    alpha * (g_loss_adv_real + g_loss_adv_fake)
+                    + beta * g_loss_recon
+                    + gamma * (e_loss_recon + anomaly_loss + aux_loss)
             )
 
             g_loss.backward()
@@ -228,7 +228,7 @@ def fit_aabigan(
         if verbose and (epoch + 1) % 10 == 0:
             avg_d_loss = epoch_d_loss / n_batches
             avg_g_loss = epoch_g_loss / n_batches
-            print(f"Epoch [{epoch+1}/{epochs}] " f"D Loss: {avg_d_loss:.4f} " f"G Loss: {avg_g_loss:.4f}")
+            print(f"Epoch [{epoch + 1}/{epochs}] " f"D Loss: {avg_d_loss:.4f} " f"G Loss: {avg_g_loss:.4f}")
 
 
 def compute_anomaly_scores(X, encoder, generator, modal="tabular", score_type="reconstruction"):
