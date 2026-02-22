@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import numpy as np
 import logging
 import gc
@@ -13,7 +15,8 @@ import psutil  # 新增
 import threading  # 新增
 
 def write_jsonl(model_name,epochs,seed, auc, ap,  res_type):
-    file_path = r'/gpudata/wsad/working_space/zsy/WSADBench/results/video/case_res.txt'
+    base_dir = Path.cwd()
+    file_path = str(base_dir / r'results/video/case_res.txt')
     if os.path.exists(file_path):
         with open(file_path, 'a') as f:
             f.write(f'{model_name},{epochs},{seed},{auc:.4f},{ap:.4f},{res_type}\n')
@@ -25,29 +28,31 @@ def write_jsonl(model_name,epochs,seed, auc, ap,  res_type):
     print(f'write: {model_name},{epochs},{seed},{auc:.4f},{ap:.4f},{epochs},{res_type}')
 
 def get_gt(score_len):
-
+    """
+    base_dir = Path.cwd()
+    input_dir = str(base_dir / self.config["PREPROCESS"]["INPUT_DIR"])
+    """
+    base_dir = Path.cwd()
     if score_len == 1436800:
-        # gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy'
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/shanghaitech_gt_1436800.npy'  # 11141440
-        # gt_path = r'/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/tmpModel/datasets/gt-ucf.npy'  # 11141440
+        gt_path = str(base_dir / r'WSADBench/baseline/VadCLIP_v1/list/shanghaitech_gt_1436800.npy')  # 11141440
         gt = np.load(gt_path)
     elif score_len == 11141440:
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/tmpModel/datasets/gt-ucf.npy'  # 11141440
+        gt_path = str(base_dir / 'WSADBench/baseline/tmpModel/datasets/gt-ucf.npy' ) # 11141440
         gt = np.load(gt_path)
         gt = gt.repeat(10)
 
     elif score_len == 11140320:
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy'
+        gt_path = str(base_dir / 'WSADBench/baseline/VadCLIP_v1/list/ucf_gt_wsad.npy')
         gt = np.load(gt_path)
         gt = gt.repeat(10)
     elif score_len == 23431840:
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/xdviolence_gt.npy'
+        gt_path = str(base_dir / 'WSADBench/baseline/VadCLIP_v1/list/xdviolence_gt.npy')
         gt = np.load(gt_path)
     elif score_len == 887520:
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/tad_gt.npy'
+        gt_path = str(base_dir / 'WSADBench/baseline/VadCLIP_v1/list/tad_gt.npy')
         gt = np.load(gt_path)
     elif score_len == 21440:
-        gt_path = r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/list/ucsd_ped2_gt.npy'
+        gt_path = str(base_dir / 'WSADBench/baseline/VadCLIP_v1/list/ucsd_ped2_gt.npy')
         gt = np.load(gt_path)
     else:
         raise Exception('score len error')
@@ -617,6 +622,120 @@ def fit_VadClip(X_train, y_train, model, optimizer, epochs, batch_size, device,X
     "anomaly_loader": anomaly_loader,
     "X_test_extra": X_test_extra,
 }
+
+
+def fit_utils_mil(X_train, y_train, model, optimizer, epochs, batch_size, device, X_test, trainer, exp_note,
+              verbose=True, seg=None, clip_num=None, crops_num=None  # 通用参数,加入seg参数
+              ):  # 其他参数
+
+    """
+        MGFN主训练函数，支持crops数据格式
+        """
+    model.train()
+    def group_into_crops(X_videos, crop_size=1):  # 原版为crop_size=10
+        grouped = []
+        for i in range(0, len(X_videos), crop_size):
+            batch = X_videos[i:i + crop_size]
+            if len(batch) == crop_size:
+                crop = np.stack(batch, axis=0)  # shape: [10, 32, 2048]
+                grouped.append(crop)
+        return grouped
+
+
+
+    # 为tabular_inexact数据集修改
+    _, data_shape, y_test_idx, y_test_gt, y_test_gt_idx, n_samples = X_test  # 拆包
+
+    feature = trainer.input_dim  # 使用channels作为特征维度
+
+    seg = n_samples  # 每个bag的样本数作为seg长度，重赋值
+    X_train = X_train.reshape(-1, n_samples, feature)  # (n_bags*n_samples, feature) -> (n_bags, n_samples, feature)
+    y_train = y_train[::n_samples]  # 每个bag的标签           #end
+
+    # 为tabular_inexact数据修改
+    X_normal_videos = [np.expand_dims(X_train[i], 0) for i in range(len(X_train)) if
+                       y_train[i] == 0]  # 扩展一个维度，替代group_into_crops产生的维度
+    X_anomaly_videos = [np.expand_dims(X_train[i], 0) for i in range(len(X_train)) if y_train[i] == 1]  # end
+
+    def balance_video_samples(normal_videos, anomaly_videos):
+        """
+        平衡正常和异常视频的数量，使用均匀采样
+        只增加样本数量，不减少原有样本
+
+        Args:
+            normal_videos: 正常视频列表
+            anomaly_videos: 异常视频列表
+
+        Returns:
+            balanced_normal_videos, balanced_anomaly_videos: 平衡后的视频列表
+        """
+        normal_count = len(normal_videos)
+        anomaly_count = len(anomaly_videos)
+
+        logging.info(f"原始数据: 正常视频 {normal_count} 个, 异常视频 {anomaly_count} 个")
+
+        if normal_count == 0 or anomaly_count == 0:
+            logging.warning("正常或异常视频数量为0，无法平衡采样")
+            return normal_videos, anomaly_videos
+
+        # 确定目标数量（取较大值，只增加不减少）
+        target_count = max(normal_count, anomaly_count)
+
+        def uniform_upsample(videos, target_size):
+            """均匀上采样函数 - 只增加样本，不减少"""
+            if len(videos) >= target_size:
+                # 如果数量已经足够，直接返回原始数据
+                return videos
+            else:
+                # 如果数量不足，均匀重复采样来增加样本
+                original_videos = videos.copy()  # 保留所有原始样本
+                additional_needed = target_size - len(videos)
+
+                # 均匀选择要重复的样本
+                if additional_needed > 0:
+                    repeat_indices = np.linspace(0, len(videos) - 1, additional_needed, dtype=int)
+                    additional_videos = [videos[i] for i in repeat_indices]
+                    return original_videos + additional_videos
+                else:
+                    return original_videos
+
+        # 均匀上采样
+        balanced_normal = uniform_upsample(normal_videos, target_count)
+        balanced_anomaly = uniform_upsample(anomaly_videos, target_count)
+
+        logging.info(f"平衡后数据: 正常视频 {len(balanced_normal)} 个, 异常视频 {len(balanced_anomaly)} 个")
+
+        # 验证没有样本被删除
+        assert len(balanced_normal) >= normal_count, "正常视频样本数量不应该减少"
+        assert len(balanced_anomaly) >= anomaly_count, "异常视频样本数量不应该减少"
+        assert len(balanced_normal) == len(balanced_anomaly), "平衡后两类样本数量应该相等"
+
+        return balanced_normal, balanced_anomaly
+
+    # 执行平衡采样
+    X_normal_videos_balanced, X_anomaly_videos_balanced = balance_video_samples(
+        X_normal_videos, X_anomaly_videos
+    )
+
+    # 构建 Dataset 和 DataLoader
+    normal_dataset = VideoDataset(X_normal_videos_balanced, seg)
+    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+
+    anomaly_dataset = VideoDataset(X_anomaly_videos_balanced, seg)
+    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+
+    # 调用主训练函数
+    return {
+        "model": model,
+        "optimizer": optimizer,
+        "epochs": epochs,
+        "device": device,
+        "X_test": X_test,
+        "trainer": trainer,
+        "verbose": verbose,
+        "normal_loader": normal_loader,
+        "anomaly_loader": anomaly_loader,
+    }
 
 def memory_monitor(threshold=90, check_interval=1.0):
     """

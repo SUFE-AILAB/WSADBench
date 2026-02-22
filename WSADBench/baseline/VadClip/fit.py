@@ -11,7 +11,7 @@ import numpy as np
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
 from common_utils.baseline_utils import get_gt, write_jsonl
 
-logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='vadclip')
+# logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='vadclip')
 from sklearn.metrics import roc_auc_score, average_precision_score
 
 # @staticmethod
@@ -136,7 +136,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
         print(f"设备: {device}")
         # print(f"稀疏性权重: {sparsity_weight}, 平滑性权重: {smoothness_weight}")
     prompt_text = get_prompt_text(trainer.label_map)
-    logger.info('start train ...')
+    # logger.info('start train ...')
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     vid_kind, vid_source_clips_num,crops_num = X_test_extra
     best_epoch = -1
@@ -194,7 +194,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                 # print(f'Epoch {epoch+1}/{epochs}, Batch {batch_idx}, Loss1: {loss1.item():.4f}， Loss2: {loss2.item():.4f}， Loss3: {loss3.item():.4f}')
                 print(
                     f'epoch: {epoch + 1}| step: {step},| loss1: {loss_total1 / (batch_idx + 1):.4f} loss2: {loss_total2 / (batch_idx + 1):.4f}, loss3:{loss3.item():.4f}')
-                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
+            #     logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
             # break
         # 学习率调度
         if trainer.scheduler is not None:
@@ -223,13 +223,13 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                write_jsonl(model_name='vadclip', epochs=epoch, auc=test_auc, ap=test_ap, seed=trainer.seed,
-                            res_type='frame')
-                write_jsonl(model_name='vadclip', epochs=epoch, auc=test_auc_v2, ap=test_ap_v2, seed=trainer.seed,
-                            res_type='clip')
-                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logger.info(
-                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+                # write_jsonl(model_name='vadclip', epochs=epoch, auc=test_auc, ap=test_ap, seed=trainer.seed,
+                #             res_type='frame')
+                # write_jsonl(model_name='vadclip', epochs=epoch, auc=test_auc_v2, ap=test_ap_v2, seed=trainer.seed,
+                #             res_type='clip')
+                # logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                # logger.info(
+                #     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
 
         train_history['loss'].append(avg_epoch_loss)
         train_history['epoch_time'].append(epoch_time)
