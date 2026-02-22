@@ -10,9 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import roc_auc_score, average_precision_score
 import logging
 import time
-# 内存占用监控
-# import psutil  # 新增
-# import threading  # 新增
+
 
 def write_jsonl(model_name,epochs,seed, auc, ap,  res_type):
     base_dir = Path.cwd()
@@ -736,28 +734,3 @@ def fit_utils_mil(X_train, y_train, model, optimizer, epochs, batch_size, device
         "normal_loader": normal_loader,
         "anomaly_loader": anomaly_loader,
     }
-
-# def memory_monitor(threshold=90, check_interval=1.0):
-#     """
-#     后台监控线程函数：
-#     每隔 check_interval 秒检查一次系统内存。
-#     如果内存使用率超过 threshold (百分比)，则强制终止程序。
-#     """
-#     print(f"启动内存监控: 阈值={threshold}%, 检查间隔={check_interval}s")
-#     while True:
-#         try:
-#             # 获取当前系统内存使用情况
-#             mem = psutil.virtual_memory()
-#             if mem.percent > threshold:
-#                 print(
-#                     f"!!! 内存告警 !!! 当前内存使用率 {mem.percent}% 超过阈值 {threshold}%。 "
-#                     f"正在强制终止进程以保护系统稳定性..."
-#                 )
-#                 # 强制终止当前进程及其所有子线程
-#                 # os._exit(1) 比 sys.exit() 更强力，能直接退出而不抛出 SystemExit 异常，
-#                 # 这在多线程/多进程环境中更有效。
-#                 os._exit(1)
-#             time.sleep(check_interval)
-#         except Exception as e:
-#             print(f"内存监控发生错误: {e}")
-#             time.sleep(check_interval)
