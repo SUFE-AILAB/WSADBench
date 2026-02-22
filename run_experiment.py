@@ -1,13 +1,6 @@
 import os
-import pickle
-
 from common_utils.baseline_utils import video_data2tabular_data
-
-# 限制GPU
-# os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-# print("当前 CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES", "未设置"))
-
-
+import re
 import time
 import gc
 import argparse
@@ -39,6 +32,7 @@ from cleanlab import Datalab
 from cleanlab.classification import CleanLearning
 from cleanlab.filter import find_label_issues
 from sklearn.ensemble import RandomForestClassifier
+
 
 class ModelRegistry:
     """模型注册器，用于管理和创建不同的模型"""
@@ -80,7 +74,7 @@ class ModelRegistry:
             "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
             "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
             "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M",
-            #无监督
+            # 无监督
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "LOF": "WSADBench.baseline.PyOD.PYOD",
@@ -99,8 +93,6 @@ class ModelRegistry:
             "AAE": "WSADBench.baseline.PyOD.PYOD",
             "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
 
-
-
         }
         return default_model_map.get(model_name, None)
 
@@ -109,26 +101,26 @@ class ExperimentRunner:
     """通用实验运行器，支持video和tabular数据集"""
 
     def __init__(
-        self,
-        models: List[str],
-        data_type: str,
-        n_jobs=1,
-        output_dir=None,
-        parameter_config_path=None,
-        datasets=None,
-        rla_list=None,
-        eln_list=None,
-        ru_list=None,
-        flip_nr_list=None,
-        flip_ar_list=None,
-        target_for_unlabeled=None,
-        noise_type=None,
-        seed_list=None,
-        gpu_list=None,
-        DEBUG=False,
-        NO_RESUME=False,
-        is_cleanlab=False,
-        exp_note = None,
+            self,
+            models: List[str],
+            data_type: str,
+            n_jobs=1,
+            output_dir=None,
+            parameter_config_path=None,
+            datasets=None,
+            rla_list=None,
+            eln_list=None,
+            ru_list=None,
+            flip_nr_list=None,
+            flip_ar_list=None,
+            target_for_unlabeled=None,
+            noise_type=None,
+            seed_list=None,
+            gpu_list=None,
+            DEBUG=False,
+            NO_RESUME=False,
+            is_cleanlab=False,
+            exp_note=None,
     ):
         """
         初始化运行器
@@ -158,7 +150,7 @@ class ExperimentRunner:
             "tabular_CV_by_ViT",
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
-            #tabular_inexact
+            # tabular_inexact
             "classical_bags_inexact",
             "CV_by_ViT_bags_inexact",
             # OOD
@@ -261,9 +253,20 @@ class ExperimentRunner:
             # 初始化配置
             config = {"model_class": default_model_class_path, "parameters": {}}
 
-            # 尝试加载YAML配置文件
-            config_file = self.parameter_config_path / f"{model_name}.yaml"
-            if config_file.exists():
+            # 获取基础的 model_configs 根路径
+            # 如果 self.parameter_config_path 是 WSADBench/model_configs/video，
+            # 那么 .parent 就会自动截断成 WSADBench/model_configs
+            if self.parameter_config_path.name != "model_configs":
+                base_config_path = self.parameter_config_path.parent
+            else:
+                base_config_path = self.parameter_config_path
+
+            # 在 model_configs 根目录及其所有子目录下递归查找对应的 YAML
+            yaml_files = list(base_config_path.rglob(f"{model_name}.yaml"))
+
+            if yaml_files:
+                # 取找到的第一个 yaml 文件
+                config_file = yaml_files[0]
                 try:
                     with open(config_file, "r", encoding="utf-8") as f:
                         yaml_config = yaml.safe_load(f)
@@ -286,8 +289,9 @@ class ExperimentRunner:
                 except Exception as e:
                     logger.warning(f"加载 {config_file} 失败: {e}")
             else:
-                logger.info(f"未找到 {model_name} 的配置文件 {config_file}，使用默认配置")
+                logger.info(f"在 {base_config_path} 及其子目录下未找到 {model_name} 的配置文件，使用默认配置")
                 logger.info(f"默认模型类: {config['model_class']}")
+                # raise ValueError(f"在 {base_config_path} 及其子目录下未找到 {model_name} 的配置文件，使用默认配置")
 
             if config["model_class"] is None:
                 raise ValueError(f"Unknown model: {model_name} Please check the model name or configuration file.")
@@ -383,9 +387,6 @@ class ExperimentRunner:
         elif self.data_type == "tabular_CV_by_ResNet18_OOD":  # 含pic和emb两种
             datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD"]
             logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD数据集")
-        elif self.data_type == "tabular_CV_by_ResNet18_OOD_pic":  # 含pic和emb两种
-            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD_pic"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD_pic数据集")
         return datasets
 
     @staticmethod
@@ -480,9 +481,9 @@ class ExperimentRunner:
         # 训练数据 reshape
         n_bags, n_samples, _dim = data["X_train"].shape
         data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
-        #包标签广播为实例级标签
+        # 包标签广播为实例级标签
         data["y_train"] = data["y_train"].repeat(n_samples)
-        data["mask"] = data["mask"].repeat(n_samples)   #掩码必须同时广播
+        data["mask"] = data["mask"].repeat(n_samples)  # 掩码必须同时广播
 
         # 保留包ID信息并扩展到samples
         if "bag_info_train" in data:
@@ -568,10 +569,10 @@ class ExperimentRunner:
             f"exp_note={result.get('exp_note', '')}"
         )
 
-
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
-        
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"] 
+
+        main_keys = ["model", "dataset", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
+                     "target_for_unlabeled", "seed", "is_cleanlab", "exp_note"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -601,23 +602,33 @@ class ExperimentRunner:
                 raise e
         elif self.data_type == "tabular_CV_by_ResNet18_OOD":
             try:
+                ds_list = [ds.split('_')[0] if 'metal' not in ds else 'metal_nut' for ds in self.datasets]
                 # self.datasets = ['aitex', 'carpet']
-                class_dict = { 'aitex': ['broken_pick','fuzzyball','weft_crack',],
-                               'carpet': ['color','cut','hole','metal_contamination','thread'],
-                                'elpv': ['mono',],
-                                'hyperkvasir': ['barretts','barretts-short-segment','esophagitis-b-d',],
-                                'mastcam': ['broken-rock','drill-hole','drt','dump-pile','float','meteorite','veins'],
-                                'metal_nut': ['bent','color','flip','scratch']}
+                class_dict = {'aitex': ['broken_pick', 'fuzzyball', 'weft_crack', ],
+                              'carpet': ['color', 'cut', 'hole', 'metal_contamination', 'thread'],
+                              'elpv': ['mono', ],
+                              'hyperkvasir': ['barretts', 'barretts-short-segment', 'esophagitis-b-d', ],
+                              'mastcam': ['broken-rock', 'drill-hole', 'drt', 'dump-pile', 'float', 'meteorite',
+                                          'veins'],
+                              'metal_nut': ['bent', 'color', 'flip', 'scratch']}
                 rate_list = ["0", "25", "50", "75", "100"]
                 # self.datasets = [f"{ds}.{class_type}.{rate}" for ds in self.datasets for class_type in class_dict[ds] for rate in rate_list]
-
+                if len(self.exp_note) == 1 and self.exp_note[0] not in ['rla_emb_near_inc', 'rla_emb_know_far_inc',
+                                                                        'rla_emb_know_near_inc']:
+                    self.datasets = [f"{ds}.{class_type}" for ds, ds_key in zip(self.datasets, ds_list) for class_type
+                                     in class_dict[ds_key]]
+                else:
+                    self.datasets = [f"{ds}._" for ds in self.datasets]
+                    print(f'class_type做占位符')
+                    pass
             except Exception as e:
                 logger.error(f"处理OOD数据集失败: {e}")
                 raise e
 
-
         # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab,self.exp_note))
+        experiment_params = list(
+            product(self.models, self.datasets, self.rla_list, self.eln_list, self.ru_list, self.flip_nr_list,
+                    self.flip_ar_list, self.target_for_unlabeled, self.seed_list, self.is_cleanlab, self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
@@ -786,7 +797,6 @@ def read_result_file(result_file):
     return df
 
 
-
 def print_summary_statistics(df):
     """通用的打印汇总统计函数"""
     logger.info("\n" + "=" * 50)
@@ -869,7 +879,7 @@ def generate_summary_only(output_dir):
     after = len(combined_df)
     logger.info(f"去重完成：删除了 {before - after} 条重复记录，剩余 {after} 条记录")
 
-    #清洗NATtype数据
+    # 清洗NATtype数据
     target_object_cols = [
         'fit_time', 'inference_time']
     for col in target_object_cols:
@@ -942,8 +952,9 @@ class GPUManager:
             tasks_per_gpu[gpu_id] = tasks_per_gpu.get(gpu_id, 0) + 1
 
         return f"GPU分配: {dict(sorted(tasks_per_gpu.items()))}"
-    
-#为适配cleanlab添加包装类
+
+
+# 为适配cleanlab添加包装类
 class CleanlabWSADWrapper:
     def __init__(self, model):
         self.model = model
@@ -954,12 +965,13 @@ class CleanlabWSADWrapper:
         return self
 
     def predict_proba(self, X):
-        logits = self.model.predict_score(X)   # 或 model.forward
+        logits = self.model.predict_score(X)  # 或 model.forward
         probs = torch.softmax(logits, dim=-1)
         return probs.detach().cpu().numpy()
 
     def predict(self, X):
         return self.predict_proba(X).argmax(axis=1)
+
 
 def run_single_experiment_with_gpu(params_with_config):
     """
@@ -1006,13 +1018,14 @@ def run_single_experiment_with_gpu(params_with_config):
             at_least_one_labeled=True,
             shortage_mode="ignore",
             data_type=data_type,
-            exp_note = exp_note
+            exp_note=exp_note
         )
 
         # 检查数据有效性
         # if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
         if len(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
+            logger.warning(
+                f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
             return None
 
         # 创建模型
@@ -1032,6 +1045,11 @@ def run_single_experiment_with_gpu(params_with_config):
         def has_param(func, param_name):
             """检查函数是否有指定参数"""
             return param_name in inspect.signature(func).parameters
+
+        # 判断是否触发对X_train和y_train的转换
+        if data_type == "video" and model_name not in ["ARNet", "MGFN", "RTFM", "Sultani", "VadClip", "URDMU",
+                                                       "ZhongGCNAD"]:
+            data = video_data2tabular_data(data, data_shape, model_name, seed)
 
         train_input = {}
         if has_param(model.fit, "X"):
@@ -1055,9 +1073,10 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
-        
-        if "inexact" in data_type:
-            if has_param(model.fit, "X_test"):
+        if has_param(model.fit, "X_test"):  # X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames
+
+            if "inexact" in data_type or 'video' in data_type:
+
                 train_input["X_test"] = [
                     data["X_test"],
                     data_shape,
@@ -1066,12 +1085,13 @@ def run_single_experiment_with_gpu(params_with_config):
                     data["y_test_gt_idx"],
                     data["NUM_FRAMES"],
                 ]
-        if has_param(model.fit,"X_test"):
-            train_input["X_test"] = [
-                data["X_test"],
-                data["y_test"]
-            ]
-                
+            else:
+                train_input["X_test"] = [
+                    data["X_test"],
+                    data["y_test"]
+                ]
+        # if has_param(model.fit,"X_test"):
+
         if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
             train_input["X_test_extra"] = [
                 data.get("vid_kind_test", None),
@@ -1081,7 +1101,6 @@ def run_single_experiment_with_gpu(params_with_config):
         # 可视化
         if has_param(model.fit, "emb_vis"):
             train_input["emb_vis"] = data.get("emb_vis", None)
-
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -1118,15 +1137,15 @@ def run_single_experiment_with_gpu(params_with_config):
             else:
                 X, y = train_input["X"], train_input["y"]
 
-            clf = RandomForestClassifier()                       #使用随机森林模型作为清洗模型
-            cl = CleanLearning(clf,cv_n_folds=5,seed=seed)
+            clf = RandomForestClassifier()  # 使用随机森林模型作为清洗模型
+            cl = CleanLearning(clf, cv_n_folds=5, seed=seed)
             cl.fit(X, y)
             # 获取清洗后的标签索引
             label_issues = cl.find_label_issues(X, y)
             issues = np.array(label_issues['is_label_issue'])
             label_quality = np.array(label_issues["label_quality"])
             # 1) 找出所有噪声样本索引
-            noise_idx = np.where(issues)[0]   # is_label_issue == True 的样本
+            noise_idx = np.where(issues)[0]  # is_label_issue == True 的样本
 
             # 如果没有噪声样本，直接返回空
             if len(noise_idx) == 0:
@@ -1137,24 +1156,23 @@ def run_single_experiment_with_gpu(params_with_config):
 
                 # 3) 噪声样本中选 label_quality 最低的 30%
                 k = int(len(noise_idx) * 0.30)
-                k = max(k, 1)   # 避免 k = 0
+                k = max(k, 1)  # 避免 k = 0
 
                 # 4) 找出噪声样本内部排序的索引
                 local_sorted_idx = np.argsort(noise_label_quality)[:k]
 
                 # 5) 映射回原始样本索引
                 low_quality_noise_idx = noise_idx[local_sorted_idx]
-                        
-            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]   # 修正噪声样本标签
+
+            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]  # 修正噪声样本标签
 
             logger.info(f"CleanLearning 检测到并修正了 {len(low_quality_noise_idx)} 个高置信度低质噪声标签样本")
 
-            if 'X' in train_input:    #更新训练数据
-                train_input["X"],train_input["y"] = X,y
+            if 'X' in train_input:  # 更新训练数据
+                train_input["X"], train_input["y"] = X, y
             else:
-                train_input["X_train"],train_input["y_train"] = X,y
+                train_input["X_train"], train_input["y_train"] = X, y
 
-        
         model.fit(**train_input)
 
         fit_time = time.time() - start_time
@@ -1192,7 +1210,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
             "noise_type": noise_type,
-            "is_cleanlab":is_cleanlab,
+            "is_cleanlab": is_cleanlab,
             "fit_time": fit_time,
             "inference_time": inference_time,
             "n_train": len(data["y_train"]),
@@ -1233,7 +1251,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": np.nan,
             "aucpr": np.nan,
             "noise_type": noise_type,
-            "is_cleanlab":is_cleanlab,
+            "is_cleanlab": is_cleanlab,
             "fit_time": np.nan,
             "inference_time": np.nan,
             "n_train": np.nan,
@@ -1355,12 +1373,12 @@ def main():
 
     parser.add_argument(
         "--is_cleanlab",
-        nargs="+" ,
+        nargs="+",
         type=str,
         choices=["true", "false"],
         default=["false"],
         help="这是是否启用清洗数据的开关参数" \
-        "默认：不开启，和之前的实验条件一致",
+             "默认：不开启，和之前的实验条件一致",
     )
 
     parser.add_argument(
@@ -1417,31 +1435,26 @@ def main():
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
-    # # 预处理RLA列表
-    # _rla_list = []
-    # for rla in args.rla_list:
-    #     if rla > 1:
-    #         _rla_list.append(int(rla))
-    #     else:
-    #         _rla_list.append(rla)
-    # args.rla_list = _rla_list
-
-    # #预处理ELN列表
-    # _eln_list = []
-    # for eln in args.eln_list:
-    #     if eln > 1:
-    #         _eln_list.append(int(eln))
-    #     else:
-    #         _eln_list.append(eln)
-    # args.eln_list = _eln_list
-
     # 处理GPU参数
     gpu_list = None
     if args.gpus is not None:
         if args.gpus.lower() == "auto":
             gpu_list = None  # 自动检测
         else:
-            gpu_list = args.gpus  # 用户指定
+            gpu_list = args.gpus.strip()  # 用户指定
+            """
+            todo:实现
+            if gpu_list 是一个单独的数字，比如'2'
+                os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+            """
+
+            if not re.match(r'^[\d,]+$', gpu_list):
+                raise ValueError(f"无效的GPU编号格式: {gpu_list}，请输入数字或逗号分隔的数字（如'2'、'0,1'）")
+
+                # 2. 处理单个数字/多个数字场景
+                # 无论是单个数字（如'2'）还是多个数字（如'0,1'），直接设置环境变量即可
+            os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+
 
     # 创建运行器
     runner = ExperimentRunner(
@@ -1463,7 +1476,7 @@ def main():
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
         NO_RESUME=args.NO_RESUME,
-        exp_note = args.exp_note
+        exp_note=args.exp_note
     )
 
     # 运行实验
