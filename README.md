@@ -188,10 +188,8 @@ python -m run_experiment --data_type tabular_classical --models DevNet --dataset
 
 
 # Multiple Instance Learning (MIL) Paradigm
-# This paradigm evaluates models under Inexact Supervision, where labels are provided at the "bag" level rather than for individual instances. Our benchmark supports MIL execution for both classical tabular bags and CV-derived feature bags.
+# This paradigm evaluates models under Inexact Supervision, where labels are provided at the "bag" level rather than for individual instances. Our benchmark supports MIL execution for classical tabular bags.
 python -m run_experiment --data_type classical_bags_inexact --models Sultani DevNet 
-
-python -m run_experiment --data_type CV_by_ViT_bags_inexact --models Sultani DevNet 
 
 # VAD
 # A. Single Model Run: Evaluate one model on a specific dataset using fixed segmentation and features.
