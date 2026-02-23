@@ -77,6 +77,8 @@ bash setup.sh
 # Run a single model on classical tabular datasets
 python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 1.0
 
+
+
 # Run multiple models with different labeled anomaly ratios
 python run_experiment.py \
     --data_type tabular_classical \
@@ -152,6 +154,43 @@ python run_experiment.py --data_type tabular_classical --dry_summary
 ```
 
 ---
+
+
+
+## 🏃 Reproduce Different Setting
+
+VAD
+
+```Shell
+# A. Single Model Run: Evaluate one model on a specific dataset using fixed segmentation and features.
+python -m run_experiment --data_type video --models DevNet  --dataset TAD seg_32_pm_mvit
+
+# B. Batch Execution: Evaluate multiple baselines across all datasets, segmentation scales, and pre-trained features.
+python -m run_experiment --data_type video --models Sultani ARNet --dataset TAD shanghaitech UCF_Crime XD-violence  seg_32_200_pm_mvit_sf_i3d_sf50_x3d  
+```
+
+OOD
+
+```Shell
+# --- Distance-based OOD (See Section 4.2.4 for details) ---
+# Setting I (ID Far, OOD Near) 
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_far_inc --dataset metal_nut 
+# Setting II (ID Near, OOD Far) 
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_near_inc --dataset metal_nut 
+# Setting III (ID Near, OOD Near)
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_near_inc --dataset metal_nut 
+
+# --- Semantic-level OOD (See Appendix for details) ---
+# Semantic-Class OOD: Evaluate generalization to unseen anomaly categories without explicit distance constraints.
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_inc --dataset metal_nut
+
+# --- Comprehensive Batch Run ---# Execute multiple models across all OOD scenarios and available datasets.
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet CatB  --exp_note rla_emb_near_inc rla_emb_know_near_inc rla_emb_know_far_inc rla_inc --dataset carpet metal_nut aitex hyperkvasir  elpv mastcam
+```
+
+
+
+
 
 ## 📊 Data Preparation
 
