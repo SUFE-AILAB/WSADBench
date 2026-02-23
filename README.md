@@ -159,9 +159,41 @@ python run_experiment.py --data_type tabular_classical --dry_summary
 
 ## 🏃 Reproduce Different Setting
 
-VAD
+### Anomaly Detection (Tabular, CV, NLP and VAD) and Multiple Instance Learning (MIL) Paradigm 
+
+See Section 4.1 "Basic WSAD Experiments" and Section 4.2.5 "Can Methods Transfer Across Supervision Types?" for details
 
 ```Shell
+# --- 1. Classical Tabular Datasets ---
+# Evaluate a single model on all classical tabular datasets
+python -m run_experiment --data_type tabular_classical --models DevNet
+
+# --- 2. Computer Vision (CV) Datasets ---
+# Evaluate a model on CV datasets using ResNet18 extracted features
+python -m run_experiment --data_type tabular_CV_by_ResNet18 --models DevNet
+
+# Evaluate a model on CV datasets using Vision Transformer (ViT) extracted features
+python -m run_experiment --data_type tabular_CV_by_ViT --models DevNet
+
+# --- 3. Natural Language Processing (NLP) Datasets ---
+# Evaluate a model on NLP datasets using BERT extracted features
+python -m run_experiment --data_type tabular_NLP_by_BERT --models DevNet
+
+# Evaluate a model on NLP datasets using RoBERTa extracted features
+python -m run_experiment --data_type tabular_NLP_by_RoBERTa --models DevNet
+
+# --- 4. Dataset-Specific Execution ---
+# Execute a model on a specific target dataset (applicable to any data_type above)
+python -m run_experiment --data_type tabular_classical --models DevNet --dataset 10_cover
+
+
+# Multiple Instance Learning (MIL) Paradigm
+# This paradigm evaluates models under Inexact Supervision, where labels are provided at the "bag" level rather than for individual instances. Our benchmark supports MIL execution for both classical tabular bags and CV-derived feature bags.
+python -m run_experiment --data_type classical_bags_inexact --models Sultani DevNet 
+
+python -m run_experiment --data_type CV_by_ViT_bags_inexact --models Sultani DevNet 
+
+# VAD
 # A. Single Model Run: Evaluate one model on a specific dataset using fixed segmentation and features.
 python -m run_experiment --data_type video --models DevNet  --dataset TAD seg_32_pm_mvit
 
@@ -169,24 +201,52 @@ python -m run_experiment --data_type video --models DevNet  --dataset TAD seg_32
 python -m run_experiment --data_type video --models Sultani ARNet --dataset TAD shanghaitech UCF_Crime XD-violence  seg_32_200_pm_mvit_sf_i3d_sf50_x3d  
 ```
 
-OOD
+### Foundation Models in Anomaly Detection
+
+See Section 4.2.1 Foundation Models for details
 
 ```Shell
-# --- Distance-based OOD (See Section 4.2.4 for details) ---
+# --- 1. TabPFN ---
+python -m run_experiment --data_type tabular_classical --models TabPFN
+
+# --- 2. LimiX ---
+# WARNING: LimiX requires a specific Python environment (e.g., Python 3.9+) due to 
+# package conflicts with other baselines. We use a dedicated Conda environment.
+python -m run_experiment --data_type tabular_classical --models LimiX
+```
+
+### 4.2.2 The Value of Unlabeled Data.
+
+```Shell
+
+```
+
+### 4.2.3 Sensitivity to Label Noise.
+
+```Shell
+
+```
+
+### OOD
+
+See Section 4.2.4 for details
+
+```Shell
 # Setting I (ID Far, OOD Near) 
-python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_far_inc --dataset metal_nut 
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_far_inc --dataset metal_nut
 # Setting II (ID Near, OOD Far) 
-python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_near_inc --dataset metal_nut 
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_know_near_inc --dataset metal_nut  
 # Setting III (ID Near, OOD Near)
 python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_emb_near_inc --dataset metal_nut 
-
 # --- Semantic-level OOD (See Appendix for details) ---
 # Semantic-Class OOD: Evaluate generalization to unseen anomaly categories without explicit distance constraints.
-python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_inc --dataset metal_nut
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet  --exp_note rla_inc --dataset metal_nut 
 
-# --- Comprehensive Batch Run ---# Execute multiple models across all OOD scenarios and available datasets.
-python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet CatB  --exp_note rla_emb_near_inc rla_emb_know_near_inc rla_emb_know_far_inc rla_inc --dataset carpet metal_nut aitex hyperkvasir  elpv mastcam
+# --- Comprehensive Batch Run ---# Execute multiple models across all OOD scenarios, rla rates and available datasets.
+python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet CatB  --exp_note rla_emb_near_inc rla_emb_know_near_inc rla_emb_know_far_inc rla_inc --dataset carpet metal_nut aitex hyperkvasir  elpv mastcam --rla_list 0.1 0.5 1.0
 ```
+
+
 
 
 
