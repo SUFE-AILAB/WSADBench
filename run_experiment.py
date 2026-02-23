@@ -1398,8 +1398,8 @@ def main():
     parser.add_argument(
         "--gpus",
         type=str,
-        default=None,
-        help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
+        default='auto',
+        help="Specify GPUs (format: 0,1,2 or auto for auto-detect all GPUs; default: auto)",
     )
 
     parser.add_argument(
@@ -1407,56 +1407,45 @@ def main():
         nargs="+",
         type=str,
         default=['None'],
-        help="实验备注，用于区分不同实验",
+        help="Experiment notes: used to distinguish different experiments.",
     )
 
     parser.add_argument(
         "--DEBUG",
         action="store_true",
-        help="开启调试模式，捕获所有异常并打印详细错误信息",
+        help="Enable debug mode to catch all exceptions and print detailed error information.",
     )
 
     parser.add_argument(
         "--NO_RESUME",
         action="store_true",
-        help="如果设置了此选项，则不会跳过已完成的实验，强制重新运行所有实验",
+        help="If this option is set, completed experiments will not be skipped, and all experiments will be forcibly re-run.",
     )
 
     args = parser.parse_args()
 
-    # 如果只是要汇总
+    # If you only need to summarize
     if args.dry_summary:
-        logger.info("仅进行汇总操作...")
+        logger.info("Only perform summary operations...")
         output_dir = args.output_dir if args.output_dir else f"results/{args.data_type}"
         generate_summary_only(output_dir)
         return
 
-    # 如果不是dry_summary模式，则检查必需的参数
+    # If it is not in dry_summary mode, check the required parameters.
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
-    # 处理GPU参数
+    # gpu param
     gpu_list = None
     if args.gpus is not None:
         if args.gpus.lower() == "auto":
-            gpu_list = None  # 自动检测
+            gpu_list = None  # auto detect
         else:
-            gpu_list = args.gpus.strip()  # 用户指定
-            """
-            todo:实现
-            if gpu_list 是一个单独的数字，比如'2'
-                os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
-            """
-
+            gpu_list = args.gpus.strip()
             if not re.match(r'^[\d,]+$', gpu_list):
-                raise ValueError(f"无效的GPU编号格式: {gpu_list}，请输入数字或逗号分隔的数字（如'2'、'0,1'）")
-
-                # 2. 处理单个数字/多个数字场景
-                # 无论是单个数字（如'2'）还是多个数字（如'0,1'），直接设置环境变量即可
+                raise ValueError(f"wrong GPU index: {gpu_list}, format should be like '2' or '0,1'")
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
-
-
-    # 创建运行器
+    # new Experiment
     runner = ExperimentRunner(
         models=args.models,
         data_type=args.data_type,
@@ -1479,55 +1468,14 @@ def main():
         exp_note=args.exp_note
     )
 
-    # 运行实验
-    logger.info(f"开始运行{args.data_type}实验，模型: {args.models}")
+    logger.info(f"start running {args.data_type} experiment, model: {args.models}")
     start_time = time.time()
 
     results = runner.run_experiments()
 
     total_time = time.time() - start_time
-    logger.info(f"所有实验完成，总耗时: {total_time:.2f}秒")
+    logger.info(f"All experiments completed, with the total time consumed: {total_time:.2f}s")
 
 
 if __name__ == "__main__":
     main()
-
-"""
-使用示例:
-
-# 运行video实验，自动检测GPU
-python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus auto
-
-# 运行tabular实验，指定使用GPU 0,1
-python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs 8 --gpus 0,1
-
-# 使用所有GPU，高并发任务
-python run_experiment.py --data_type video --models Sultani --n_jobs 16 --gpus auto
-
-# 仅使用特定GPU
-python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus 0,2
-
-# CPU模式（不使用GPU）
-python run_experiment.py --data_type tabular --models RoSAS --n_jobs 4
-
-# 指定特定数据集和RLA
-python run_experiment.py --data_type video --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0 --gpus auto
-
-# 指定随机种子
-python run_experiment.py --data_type tabular --models RoSAS --seed_list 1 2 3 4 5 --gpus 0,1
-
-# 使用自定义配置目录
-python run_experiment.py --data_type video --models RoSAS --parameter_config_path ./my_configs --gpus auto
-
-# 并行运行，使用所有CPU核心和GPU
-python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs -1 --gpus auto
-
-# 仅进行汇总（从已有的detail目录生成summary）
-python run_experiment.py --data_type video --dry_summary
-
-# GPU超分：8个任务使用2个GPU（每个GPU运行4个任务）
-python run_experiment.py --data_type video --models Sultani --n_jobs 8 --gpus 0,1
-
-# 快速测试
-python run_experiment.py --data_type video --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1 --gpus 0
-"""
