@@ -287,7 +287,7 @@ def video_data2tabular_data(data, data_shape, model_name, seed):
     indices_normal = np.where(video_labels == 0)[0]
     indices_anomaly = np.where(video_labels == 1)[0]
 
-    logging.info(f"原始数据: 正常视频 {len(indices_normal)} 个, 异常视频 {len(indices_anomaly)} 个")
+    logging.info(f"Original data: {len(indices_normal)} normal videos, {len(indices_anomaly)} anomalous videos")
 
     if len(indices_normal) == 0 or len(indices_anomaly) == 0:
         logging.warning("某类样本为0，跳过平衡")
@@ -311,7 +311,7 @@ def video_data2tabular_data(data, data_shape, model_name, seed):
     balanced_idx_normal = get_balanced_indices(indices_normal, target_count)
     balanced_idx_anomaly = get_balanced_indices(indices_anomaly, target_count)
 
-    logging.info(f"平衡后数据: 正常视频 {len(balanced_idx_normal)} 个, 异常视频 {len(balanced_idx_anomaly)} 个")
+    logging.info(f"Balanced data: {len(balanced_idx_normal)} normal videos, {len(balanced_idx_anomaly)} anomalous videos")
 
     # ---------------------------------------------------------
     # 4. 构建最终数据集
@@ -346,11 +346,7 @@ def video_data2tabular_data(data, data_shape, model_name, seed):
             idx = rnd.permutation(current_rows)[:max_limit]
             data['X_train'] = data['X_train'][idx]
             data['y_train'] = data['y_train'][idx]
-            print(f'采样{max_limit}个样本 (from {current_rows})')
-
-    # 主动释放内存
-    # del X_raw, y_raw, X_reshaped, X_videos, X_videos_flat
-    # gc.collect()
+            print(f'Sampled {max_limit} samples (from {current_rows})')
 
     return data
 
@@ -419,10 +415,10 @@ def fit_utils(X_train, y_train, model, optimizer, epochs, batch_size, device,X_t
         normal_count = len(normal_videos)
         anomaly_count = len(anomaly_videos)
 
-        logging.info(f"原始数据: 正常视频 {normal_count} 个, 异常视频 {anomaly_count} 个")
+        logging.info(f"Original data: {normal_count} normal videos, {anomaly_count} anomalous videos")
 
         if normal_count == 0 or anomaly_count == 0:
-            logging.warning("正常或异常视频数量为0，无法平衡采样")
+            logging.warning("The number of normal or anomalous videos is 0, making balanced sampling impossible")
             return normal_videos, anomaly_videos
 
         # 确定目标数量（取较大值，只增加不减少）
@@ -450,12 +446,13 @@ def fit_utils(X_train, y_train, model, optimizer, epochs, batch_size, device,X_t
         balanced_normal = uniform_upsample(normal_videos, target_count)
         balanced_anomaly = uniform_upsample(anomaly_videos, target_count)
 
-        logging.info(f"平衡后数据: 正常视频 {len(balanced_normal)} 个, 异常视频 {len(balanced_anomaly)} 个")
+        logging.info(
+            f"Data after balancing: {len(balanced_normal)} normal videos, {len(balanced_anomaly)} abnormal videos")
 
-        # 验证没有样本被删除
-        assert len(balanced_normal) >= normal_count, "正常视频样本数量不应该减少"
-        assert len(balanced_anomaly) >= anomaly_count, "异常视频样本数量不应该减少"
-        assert len(balanced_normal) == len(balanced_anomaly), "平衡后两类样本数量应该相等"
+        # Verify that no samples were deleted
+        assert len(balanced_normal) >= normal_count, "The number of normal video samples should not decrease"
+        assert len(balanced_anomaly) >= anomaly_count, "The number of abnormal video samples should not decrease"
+        assert len(balanced_normal) == len(balanced_anomaly), "The number of samples in both classes should be equal after balancing"
 
         return balanced_normal, balanced_anomaly
 
@@ -559,10 +556,10 @@ def fit_VadClip(X_train, y_train, model, optimizer, epochs, batch_size, device,X
         normal_count = len(normal_videos)
         anomaly_count = len(anomaly_videos)
 
-        logging.info(f"原始数据: 正常视频 {normal_count} 个, 异常视频 {anomaly_count} 个")
+        logging.info(f"Original data: {normal_count} normal videos, {anomaly_count} anomalous videos")
 
         if normal_count == 0 or anomaly_count == 0:
-            logging.warning("正常或异常视频数量为0，无法平衡采样")
+            logging.warning("The number of normal or anomalous videos is 0, making balanced sampling impossible")
             return normal_videos, anomaly_videos
 
         # 确定目标数量（取较大值，只增加不减少）
@@ -593,7 +590,7 @@ def fit_VadClip(X_train, y_train, model, optimizer, epochs, batch_size, device,X
         balanced_anomaly_vid_kind = uniform_upsample(abnormal_vid_kind , target_count)
         balanced_normal_clip_num = uniform_upsample(normal_clip_num , target_count)
         balanced_anomaly_clip_num = uniform_upsample(abnormal_clip_num , target_count)
-        logging.info(f"平衡后数据: 正常视频 {len(balanced_normal)} 个, 异常视频 {len(balanced_anomaly)} 个")
+        logging.info(f"Balanced data: {len(balanced_normal)} normal videos, {len(balanced_anomaly)} anomalous videos")
         return balanced_normal, balanced_normal_vid_kind, balanced_normal_clip_num, balanced_anomaly, balanced_anomaly_vid_kind, balanced_anomaly_clip_num
 
     # 执行平衡采样
@@ -670,7 +667,7 @@ def fit_utils_mil(X_train, y_train, model, optimizer, epochs, batch_size, device
         normal_count = len(normal_videos)
         anomaly_count = len(anomaly_videos)
 
-        logging.info(f"原始数据: 正常视频 {normal_count} 个, 异常视频 {anomaly_count} 个")
+        logging.info(f"Original data: {normal_count} normal videos, {anomaly_count} anomalous videos")
 
         if normal_count == 0 or anomaly_count == 0:
             logging.warning("正常或异常视频数量为0，无法平衡采样")
@@ -701,12 +698,13 @@ def fit_utils_mil(X_train, y_train, model, optimizer, epochs, batch_size, device
         balanced_normal = uniform_upsample(normal_videos, target_count)
         balanced_anomaly = uniform_upsample(anomaly_videos, target_count)
 
-        logging.info(f"平衡后数据: 正常视频 {len(balanced_normal)} 个, 异常视频 {len(balanced_anomaly)} 个")
+        logging.info(
+            f"Data after balancing: {len(balanced_normal)} normal videos, {len(balanced_anomaly)} abnormal videos")
 
-        # 验证没有样本被删除
-        assert len(balanced_normal) >= normal_count, "正常视频样本数量不应该减少"
-        assert len(balanced_anomaly) >= anomaly_count, "异常视频样本数量不应该减少"
-        assert len(balanced_normal) == len(balanced_anomaly), "平衡后两类样本数量应该相等"
+        # Verify that no samples were deleted
+        assert len(balanced_normal) >= normal_count, "The number of normal video samples should not decrease"
+        assert len(balanced_anomaly) >= anomaly_count, "The number of abnormal video samples should not decrease"
+        assert len(balanced_normal) == len(balanced_anomaly), "The number of samples in both classes should be equal after balancing"
 
         return balanced_normal, balanced_anomaly
 
