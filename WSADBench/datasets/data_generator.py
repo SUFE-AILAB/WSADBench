@@ -63,12 +63,24 @@ class DataGenerator:
 
     def generate_dataset_list(self):
 
+
         all_dataset_list = {}
         for dataset_kind, ds_config in self.configs.items():
             if "DATA_DIR" in ds_config:
-                all_dataset_list[dataset_kind] = [
-                    f.stem for f in (self.wd / ds_config["DATA_DIR"]).iterdir() if f.suffix in [".npz", ".npy", ".pkl"]  # 允许pkl
-                ]
+                # 1. 先构建完整的绝对路径对象
+                data_dir_path = self.wd / ds_config["DATA_DIR"]
+
+                # 2. 关键修复：检查路径是否存在，且确实是一个目录
+                if data_dir_path.exists() and data_dir_path.is_dir():
+                    all_dataset_list[dataset_kind] = [
+                        f.stem for f in data_dir_path.iterdir()
+                        if f.suffix in [".npz", ".npy", ".pkl"]
+                    ]
+                else:
+                    # 3. 如果目录不存在，给一个空列表，防止报错，也不影响其他已存在的数据集运行
+                    # 你可以在这里加个 print 提示，或者保持静默
+                    all_dataset_list[dataset_kind] = []
+
                 continue
 
             all_dataset_list[dataset_kind] = list(ds_config.keys())
@@ -533,7 +545,7 @@ class DataGenerator:
                 # 补一个umap的降维可视化结果，要求对整个数据集降维（从原始维度），然后标出X_test_seen, X_test_unseen，X_train_ab,X_train_ab_core.用点的形状区分
                 # 再用颜色区分实际的类别，比如good，'broken_pick','fuzzyball','weft_crack'
                 # 在选取簇中心后，补充核心样本 key
-                show_emb = True
+                show_emb = False
                 if show_emb and rate == 0.5:  # 只看对半
                     save_path = self.wd
                     # 用pickle存一下中间数据，方便重载
@@ -746,7 +758,7 @@ class DataGenerator:
     ):
         # set seed for reproducible results
         self.utils.set_seed(self.seed)
-        if '_' in data_type:
+        if '_' in data_type and 'inexact' not in data_type:
             data_type = data_type.split('_', 1)[1]
 
         data = None
@@ -784,220 +796,313 @@ class DataGenerator:
 
                 data_manager = ManagerClass(ds_config)
                 data = data_manager.load_data(**_params)
+                return data
             if "OOD" in data_type:  # OOD数据
                 data = self._load_ood_dataset(data_type,la, exp_note)
+                return data
 
             else:    # 感觉是下面这段不一致
-                for kind, dataset_list in self.all_dataset_list.items():
-                    if kind in ["video"]:
-                        real_ds_name = self.dataset.split(".")[0]  # for parameterized dataset
-                    else:
-                        real_ds_name = self.dataset
+                real_ds_name = self.dataset
 
-                    if real_ds_name not in dataset_list:
-                        continue
+                if "DATA_DIR" in self.configs[data_type]:
+                    data_path = (
+                            self.wd / self.configs[data_type]["DATA_DIR"] / (
+                            self.dataset + self.configs[data_type]["END_WITH"])
+                    )
+                    data = np.load(data_path, allow_pickle=True)
 
-                    if "DATA_DIR" in self.configs[kind]:
-                        data_path = (
-                                self.wd / self.configs[kind]["DATA_DIR"] / (
-                                    self.dataset + self.configs[kind]["END_WITH"])
-                        )
-                        data = np.load(data_path, allow_pickle=True)
-
-                        X, y = data["X"], data["y"]
-                        break
-
-                    ManagerClass = import_class(self.configs[kind][real_ds_name]["MANAGER_CLASS"])
-                    ds_config = self.configs[kind][real_ds_name]
-                    ds_config["working_dir"] = self.wd
-                    ds_config["seed"] = self.seed
-
-                    ds_param = self.dataset.split(".")[1:]  # .s32.mi3d
-                    _params = {}
-                    for param in ds_param:
-                        if param[0] == 's' and param[1:].isdigit():
-                            _params["num_segments"] = int(param[1:])
-                        if param[0] == 'l' and param[1:].isdigit():
-                            _params["limit"] = int(param[1:])
-                        if param[0] == 'm' and param[1:].isalnum():
-                            ds_config['pretrain_model'] = param[1:]
-
-                    data_manager = ManagerClass(ds_config)
-                    data = data_manager.load_data(**_params)
+                    X, y = data["X"], data["y"]  # 这里加载数据
+                    # for tabular_inexact
+                    y_inst_gt = None
+                    if "inexact" in data_type:
+                        y_inst_gt = data["y_gt"]
 
                 if data is None:
                     raise NotImplementedError(f"Dataset {self.dataset} not found in the available datasets.")
 
-                # 如果已经划分好了训练和测试集，测跳过划分：TODO: 可能需要修改，因为也跳过了异常注入
+            # 这里是tab inexcat
+            # 如果已经划分好了训练和测试集，测跳过划分：TODO: 可能需要修改，因为也跳过了异常注入
             if {"X_train", "y_train", "X_test", "y_test"}.issubset(data.keys()):
                 X_train, X_test, y_train, y_test = data["X_train"], data["X_test"], data["y_train"], data["y_test"]
-            # else:
-            #     # if the dataset is too small, generating duplicate smaples up to n_samples_threshold
-            #     if len(y) < self.n_samples_threshold and self.generate_duplicates:
-            #         print(f"generating duplicate samples for dataset {self.dataset}...")
-            #         self.utils.set_seed(self.seed)
-            #         idx_duplicate = np.random.choice(np.arange(len(y)), self.n_samples_threshold, replace=True)
-            #         X = X[idx_duplicate]
-            #         y = y[idx_duplicate]
-            #
-            #     # if the dataset is too large, subsampling for considering the computational cost
-            #     if len(y) > 10000:
-            #         print(f"subsampling for dataset {self.dataset}...")
-            #         self.utils.set_seed(self.seed)
-            #         idx_sample = np.random.choice(np.arange(len(y)), 10000, replace=False)
-            #         X = X[idx_sample]
-            #         y = y[idx_sample]
-            #
-            #     # whether to generate realistic synthetic outliers
-            #     if realistic_synthetic_mode is not None:
-            #         # we save the generated dependency anomalies, since the Vine Copula could spend too long for generation
-            #         if realistic_synthetic_mode == "dependency":
-            #             filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synthetic")
-            #             filename = "dependency_anomalies_" + self.dataset + "_" + str(self.seed) + ".npz"
-            #
-            #             if not os.path.exists(filepath):
-            #                 os.makedirs(filepath)
-            #             try:
-            #                 data_dependency = np.load(os.path.join(filepath, filename), allow_pickle=True)
-            #                 X = data_dependency["X"]
-            #                 y = data_dependency["y"]
-            #             except:
-            #                 # raise NotImplementedError
-            #                 print(f"Generating dependency anomalies...")
-            #                 X, y = self.generate_realistic_synthetic(
-            #                     X, y, realistic_synthetic_mode=realistic_synthetic_mode, alpha=alpha,
-            #                     percentage=percentage
-            #                 )
-            #                 np.savez_compressed(os.path.join(filepath, filename), X=X, y=y)
-            #                 pass
-            #
-            #         else:
-            #             X, y = self.generate_realistic_synthetic(
-            #                 X, y, realistic_synthetic_mode=realistic_synthetic_mode, alpha=alpha, percentage=percentage
-            #             )
-            #
-            #     # whether to add different types of noise for testing the robustness of benchmark models
-            #     if noise_type is None:
-            #         pass
-            #
-            #     elif noise_type == "duplicated_anomalies":
-            #         # X, y = self.add_duplicated_anomalies(X, y, duplicate_times=duplicate_times)
-            #         pass
-            #
-            #     elif noise_type == "irrelevant_features":
-            #         X, y = self.add_irrelevant_features(X, y, noise_ratio=noise_ratio)
-            #
-            #     elif noise_type == "label_contamination":
-            #         pass
-            #
-            #     else:
-            #         raise NotImplementedError
-            #
-            #     print(f"current noise type: {noise_type}")
-            #
-            #     # show the statistic
-            #     self.utils.data_description(X=X, y=y)
-            #
-            #     # spliting the current data to the training set and testing set
-            #     X_train, X_test, y_train, y_test = train_test_split(
-            #         X, y, test_size=self.test_size, shuffle=True, stratify=y
-            #     )
-            #
-            #     # we respectively generate the duplicated anomalies for the training and testing set
-            #     if noise_type == "duplicated_anomalies":
-            #         X_train, y_train = self.add_duplicated_anomalies(X_train, y_train, duplicate_times=duplicate_times)
-            #         X_test, y_test = self.add_duplicated_anomalies(X_test, y_test, duplicate_times=duplicate_times)
-            #
-            #     # notice that label contamination can only be added in the training set
-            #     elif noise_type == "label_contamination":
-            #         X_train, y_train = self.add_label_contamination(X_train, y_train, noise_ratio=noise_ratio)
-            #
-            #     # minmax scaling
-            #     if minmax:
-            #         scaler = MinMaxScaler().fit(X_train)
-            #         X_train = scaler.transform(X_train)
-            #         X_test = scaler.transform(X_test)
-            #
-            #     # idx of normal samples and unlabeled/labeled anomalies
-            # idx_normal = np.where(y_train == 0)[0]
-            # idx_anomaly = np.where(y_train == 1)[0]
-            #
-            # if type(la) == float:
-            #     if at_least_one_labeled:
-            #         idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)), replace=False)
-            #     else:
-            #         idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)), replace=False)
-            # elif type(la) == int:
-            #     if la > len(idx_anomaly):
-            #         if shortage_mode == "raise":
-            #             raise AssertionError(
-            #                 f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
-            #                 f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
-            #             )
-            #         elif shortage_mode == "ignore":
-            #             idx_labeled_anomaly = idx_anomaly
-            #         else:
-            #             raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
-            #     else:
-            #         idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
-            # else:
-            #     raise NotImplementedError
-            #
-            # if type(eln) == float:
-            #     if at_least_one_labeled:
-            #         idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_labeled_anomaly)),
-            #                                               replace=False)
-            #     else:
-            #         idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_labeled_anomaly)),
-            #                                               replace=False)
-            # elif type(eln) == int:
-            #     if eln > len(idx_normal):
-            #         if shortage_mode == "raise":
-            #             raise AssertionError(
-            #                 f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
-            #                 f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
-            #             )
-            #         elif shortage_mode == "ignore":
-            #             idx_labeled_normal = idx_normal
-            #         else:
-            #             raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
-            #     else:
-            #         idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
-            # else:
-            #     raise NotImplementedError
-            #
-            # idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
-            # idx_unlabeled_normal = np.setdiff1d(idx_normal, idx_labeled_normal)
-            # # whether to remove the anomaly contamination in the unlabeled data
-            # if noise_type == "anomaly_contamination":
-            #     idx_unlabeled_anomaly = self.remove_anomaly_contamination(idx_unlabeled_anomaly, contam_ratio)
-            #
-            # # unlabel data = normal data + unlabeled anomalies (which is considered as contamination)
-            # idx_unlabeled = np.append(idx_unlabeled_normal, idx_unlabeled_anomaly)
-            #
-            # del idx_anomaly, idx_unlabeled_anomaly
-            #
-            # # that of labeled anomalies is 1
-            # y_train[idx_labeled_anomaly] = 1
-            # # 设置掩码区分出有标签和无标签样本
-            # mask = np.ones_like(y_train, dtype=int)
-            # mask[idx_unlabeled] = 0  # 无标签索引处赋值为0
-            #
-            # if target_for_unlabeled == "fill_unlabel_0":
-            #     y_train[mask == 0] = 0  # 无标签样本的标签为0
-            # elif target_for_unlabeled == "delete_sample":  # 只使用有标签样本
-            #     X_train = X_train[mask == 1]
-            #     y_train = y_train[mask == 1]
-            #
-            # result = {
-            #     "X_train": X_train,
-            #     "y_train": y_train,
-            #     "X_test": X_test,
-            #     "y_test": y_test,
-            #     "mask": mask
-            # }
+            else:
+                # if the dataset is too small, generating duplicate smaples up to n_samples_threshold
+                if len(y) < self.n_samples_threshold and self.generate_duplicates:
+                    print(f"generating duplicate samples for dataset {self.dataset}...")
+                    self.utils.set_seed(self.seed)
+                    idx_duplicate = np.random.choice(np.arange(len(y)), self.n_samples_threshold, replace=True)
+                    X = X[idx_duplicate]
+                    y = y[idx_duplicate]
+                    if y_inst_gt is not None:
+                        n_samples = X.shape[1]
+                        y_inst_gt = np.concatenate(
+                            [y_inst_gt[i * n_samples:(i + 1) * n_samples] for i in idx_duplicate])
 
-            # if data is not None and isinstance(data, dict):
-            #     data.update(result)
-            #     result = data
-            return data  # 好像中间一大段和vad无关。。
+                # if the dataset is too large, subsampling for considering the computational cost
+                if len(y) > 10000:
+                    print(f"subsampling for dataset {self.dataset}...")
+                    self.utils.set_seed(self.seed)
+                    idx_sample = np.random.choice(np.arange(len(y)), 10000, replace=False)
+                    X = X[idx_sample]
+                    y = y[idx_sample]
+                    if y_inst_gt is not None:
+                        n_samples = X.shape[1]
+                        y_inst_gt = np.concatenate(
+                            [y_inst_gt[i * n_samples:(i + 1) * n_samples] for i in idx_sample])
+
+                # whether to generate realistic synthetic outliers
+                if realistic_synthetic_mode is not None:
+                    # we save the generated dependency anomalies, since the Vine Copula could spend too long for generation
+                    if realistic_synthetic_mode == "dependency":
+                        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synthetic")
+                        filename = "dependency_anomalies_" + self.dataset + "_" + str(self.seed) + ".npz"
+
+                        if not os.path.exists(filepath):
+                            os.makedirs(filepath)
+                        try:
+                            data_dependency = np.load(os.path.join(filepath, filename), allow_pickle=True)
+                            X = data_dependency["X"]
+                            y = data_dependency["y"]
+                        except:
+                            # raise NotImplementedError
+                            print(f"Generating dependency anomalies...")
+                            X, y = self.generate_realistic_synthetic(
+                                X, y, realistic_synthetic_mode=realistic_synthetic_mode, alpha=alpha,
+                                percentage=percentage
+                            )
+                            np.savez_compressed(os.path.join(filepath, filename), X=X, y=y)
+                            pass
+
+                    else:
+                        X, y = self.generate_realistic_synthetic(
+                            X, y, realistic_synthetic_mode=realistic_synthetic_mode, alpha=alpha,
+                            percentage=percentage
+                        )
+
+                # show the statistic
+                self.utils.data_description(X=X, y=y)
+
+                # 原始包索引
+                bag_indices = np.arange(X.shape[0])  # 为tabular_inexact增加
+                # spliting the current data to the training set and testing set   目前为包形式，增加索引记录
+                X_train, X_test, y_train, y_test, bag_idx_train, bag_idx_test = train_test_split(  # 7比3划分
+                    X, y, bag_indices, test_size=self.test_size, shuffle=True, stratify=y
+                )
+
+                y_test_gt_idx = None
+                y_test_gt = None
+                if X_test.ndim == 3:
+                    n_samples = X_test.shape[1]
+                    # 获得X_test实例级样本索引
+                    y_test_gt_idx = torch.cat(
+                        [torch.arange(i * n_samples, (i + 1) * n_samples) for i in bag_idx_test])
+                    y_test_gt = y_inst_gt[y_test_gt_idx]
+
+                if noise_type is None:
+                    pass
+                elif noise_type == "label_contamination":
+                    X_train, y_train = self.add_label_contamination(X_train, y_train,
+                                                                    flip_normal_ratio=flip_normal_ratio,
+                                                                    flip_abnormal_ratio=flip_abnormal_ratio)
+
+                # minmax scaling1
+                if minmax:
+                    if X_train.ndim <= 2:
+                        # 原逻辑
+                        scaler = MinMaxScaler().fit(X_train)
+                        X_train = scaler.transform(X_train)
+                        X_test = scaler.transform(X_test)
+
+                    elif X_train.ndim == 3:
+                        # 三维包形式 [n_bags, n_samples, n_features] → 展平到二维
+                        n_bags, n_samples, n_features = X_train.shape
+
+                        # 展平
+                        X_train_flat = X_train.reshape(n_bags * n_samples, n_features)
+                        X_test_flat = X_test.reshape(X_test.shape[0] * X_test.shape[1], X_test.shape[2])
+
+                        # MinMaxScaler
+                        scaler = MinMaxScaler().fit(X_train_flat)
+                        X_train_scaled = scaler.transform(X_train_flat)
+                        X_test_scaled = scaler.transform(X_test_flat)
+
+                        # 恢复三维
+                        X_train = X_train_scaled.reshape(n_bags, n_samples, n_features)
+                        X_test = X_test_scaled.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
+
+            if eln == 0.0:
+                # idx of normal samples and unlabeled/labeled anomalies
+                idx_normal = np.where(y_train == 0)[0]
+                idx_anomaly = np.where(y_train == 1)[0]
+
+                if type(la) == float:
+                    if at_least_one_labeled:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)),
+                                                               replace=False)
+                    else:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)),
+                                                               replace=False)
+                elif type(la) == int:
+                    if la > len(idx_anomaly):
+                        if shortage_mode == "raise":
+                            raise AssertionError(
+                                f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
+                                f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                            )
+                        elif shortage_mode == "ignore":
+                            idx_labeled_anomaly = idx_anomaly
+                        else:
+                            raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    else:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
+                else:
+                    raise NotImplementedError
+
+                idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
+                # ---- 分层采样逻辑 ----
+                n_normal = len(idx_normal)
+                n_unlabeled_anom = len(idx_unlabeled_anomaly)
+                total_unlabeled = n_normal + n_unlabeled_anom
+
+                # 计算每类比例
+                p_normal = n_normal / total_unlabeled
+                p_unlabeled_anom = n_unlabeled_anom / total_unlabeled
+
+                # 对无标签的异常样本和正常样本进行分层采用；控制unlabeled数据使用比例
+                if type(ru) == float:
+                    idx_using_normal = np.random.choice(idx_normal, ceil(ru * len(idx_normal)), replace=False)
+                    idx_using_unlabeled_anom = np.random.choice(idx_unlabeled_anomaly,
+                                                                ceil(ru * len(idx_unlabeled_anomaly)),
+                                                                replace=False)
+
+                elif type(ru) == int:
+                    if ru > total_unlabeled:
+                        if shortage_mode == "raise":
+                            raise AssertionError(
+                                f"the number of using unlabeled samples are greater than the total unlabeled samples: {len(idx_normal)} !"
+                                f'Please set a smaller ru or change the shortage_mode to "ignore" or "duplicate".'
+                            )
+                        elif shortage_mode == "ignore":
+                            idx_using_unlabeled_anom = idx_unlabeled_anomaly
+                            idx_using_normal = idx_normal
+                        else:
+                            raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    else:
+                        idx_using_unlabeled_anom = np.random.choice(idx_unlabeled_anomaly, ceil(
+                            min(p_unlabeled_anom * ru, len(idx_unlabeled_anomaly))), replace=False)
+                        idx_using_normal = np.random.choice(idx_normal, ru - len(idx_using_unlabeled_anom),
+                                                            replace=False)
+
+                idx_using_unlabeled = np.append(idx_using_normal, idx_using_unlabeled_anom)
+                final_indices = np.concatenate([idx_labeled_anomaly, idx_using_unlabeled])
+
+            else:
+                # idx of normal samples and unlabeled/labeled anomalies
+                idx_normal = np.where(y_train == 0)[0]
+                idx_anomaly = np.where(y_train == 1)[0]
+
+                if type(la) == float:
+                    if at_least_one_labeled:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, ceil(la * len(idx_anomaly)),
+                                                               replace=False)
+                    else:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, int(la * len(idx_anomaly)),
+                                                               replace=False)
+                elif type(la) == int:
+                    if la > len(idx_anomaly):
+                        if shortage_mode == "raise":
+                            raise AssertionError(
+                                f"the number of labeled anomalies are greater than the total anomalies: {len(idx_anomaly)} !"
+                                f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                            )
+                        elif shortage_mode == "ignore":
+                            idx_labeled_anomaly = idx_anomaly
+                        else:
+                            raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    else:
+                        idx_labeled_anomaly = np.random.choice(idx_anomaly, la, replace=False)
+                else:
+                    raise NotImplementedError
+
+                if type(eln) == float:
+                    if at_least_one_labeled:
+                        if len(idx_normal) < ceil(eln * len(idx_normal)):
+                            print(
+                                f"[Warning] normal number of samples lack ({len(idx_normal)} < {ceil(eln * len(idx_normal))},using resample.")
+                            shortage = ceil(eln * len(idx_normal)) - len(idx_normal)
+                            extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                            idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                        else:
+                            idx_labeled_normal = np.random.choice(idx_normal, ceil(eln * len(idx_normal)),
+                                                                  replace=False)
+                    else:
+                        if len(idx_normal) < int(eln * len(idx_normal)):
+                            print(
+                                f"[Warning] normal number of samples lack ({len(idx_normal)} < {int(eln * len(idx_normal))},using resample.。")
+                            shortage = int(eln * len(idx_normal)) - len(idx_normal)
+                            extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                            idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                        else:
+                            idx_labeled_normal = np.random.choice(idx_normal, int(eln * len(idx_normal)),
+                                                                  replace=False)
+
+                elif type(eln) == int:
+                    if eln > len(idx_normal):
+                        if shortage_mode == "raise":
+                            raise AssertionError(
+                                f"the number of labeled anomalies are greater than the total anomalies: {len(idx_normal)} !"
+                                f'Please set a smaller la or change the shortage_mode to "ignore" or "duplicate".'
+                            )
+                        elif shortage_mode == "ignore":
+                            shortage = eln - len(idx_normal)
+                            extra_idx_normal = np.random.choice(idx_normal, shortage, replace=True)
+                            idx_labeled_normal = np.append(idx_normal, extra_idx_normal)
+                        else:
+                            raise NotImplementedError(f"shortage_mode {shortage_mode} is not implemented!")
+                    else:
+                        idx_labeled_normal = np.random.choice(idx_normal, eln, replace=False)
+                else:
+                    raise NotImplementedError
+
+                idx_unlabeled_anomaly = np.setdiff1d(idx_anomaly, idx_labeled_anomaly)
+                idx_unlabeled_normal = np.setdiff1d(idx_normal, idx_labeled_normal)
+                idx_using_unlabeled = np.append(idx_unlabeled_anomaly, idx_unlabeled_normal)
+                final_indices = np.concatenate([idx_labeled_anomaly, idx_labeled_normal, idx_using_unlabeled])
+
+            # 根据 final_indices 重新取 X_train / y_train
+            X_train = X_train[final_indices]
+            y_train = y_train[final_indices]
+
+            # 构建 mask 实现eln相关功能
+            mask = np.ones_like(y_train, dtype=int)
+            # unlabeled 样本 mask=0
+            mask[np.isin(final_indices, idx_using_unlabeled)] = 0
+            # 保证 labeled anomaly 的标签是 1
+            y_train[np.isin(final_indices, idx_labeled_anomaly)] = 1
+
+            if target_for_unlabeled == "fill_unlabel_0":
+                y_train[mask == 0] = 0  # 无标签样本的标签为0
+
+            elif target_for_unlabeled == "delete_sample":  # 只使用有标签样本
+                X_train = X_train[mask == 1]
+                y_train = y_train[mask == 1]
+
+
+        result = {
+            "X_train": X_train,
+            "y_train": y_train,
+            "X_test": X_test,
+            "y_test": y_test,
+            "y_test_idx": bag_idx_test,
+            "y_test_gt_idx": y_test_gt_idx,
+            "y_test_gt": y_test_gt,
+            "mask": mask,
+            "bag_info_train":bag_idx_train,
+            "bag_info_test":bag_idx_test,
+        }
+        if X_train.ndim ==3:
+            result["NUM_FRAMES"] = X_train.shape[1]  # 这里是tabular_inexact的每个包内样本数，为了减少代码改动，沿用这个名字,tabular_inexact专用
+
+        if data is not None and isinstance(data, dict):
+            data.update(result)
+            result = data
+        return result
