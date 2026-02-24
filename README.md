@@ -71,93 +71,49 @@ bash setup.sh
 
 ## 🏃 Quick Start
 
-### Tabular Experiments
-
-```bash
-# Run a single model on classical tabular datasets
-python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 1.0
+use installment and one line request to tell the usage 
 
 
 
-# Run multiple models with different labeled anomaly ratios
-python run_experiment.py \
-    --data_type tabular_classical \
-    --models DeepSAD DevNet FEAWAD \
-    --rla_list 0.01 0.05 0.1 0.5 1.0 \
-    --n_jobs 4
 
-# Run with custom seeds
-python run_experiment.py \
-    --data_type tabular_classical \
-    --models DevNet \
-    --seed_list 1 2 3 4 5
 
-# Run Incomplete (rla/nla/unlabel) experiments
-python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 7 --target_for_unlabeled fill_unlabel_0 --exp_note incomplete_rla
 
-python run_experiment.py --data_type tabular_CV_by_ViT --models DeepSAD --rla_list 1 3 5 10 15 20 50 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 6 --target_for_unlabeled fill_unlabel_0 --exp_note incomplete_nla
-
-python run_experiment.py --data_type tabular_NLP_by_RoBERTa --models REPEN --rla_list 1 10 20 50 --eln_list 0.0 --ru_list 20 50 200 1000 --flip_nr_list 0.0 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 1 --target_for_unlabeled fill_unlabel_0 --exp_note unlabel_nlanu
-
-# Run Inaccurate (fnr/far/double) experiments
-python run_experiment.py --data_type tabular_classical --models RoSAS --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.0 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 6 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_fnr
-
-python run_experiment.py --data_type tabular_classical --models RoSAS --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0  --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 5 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_far
-
-python run_experiment.py --data_type tabular_classical --models DevNet --rla_list 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --seed_list 0 1 2 3 4 --n_jobs 3 --gpus 3 --target_for_unlabeled fill_unlabel_0 --noise_type label_contamination --is_cleanlab false --exp_note inaccurate_double
-
-# Run Inexact experiments
-# Generate MIL bags datasets
-python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/classical_bags_inexact --bag-size 10 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
-# Run tabular inexact experiments
-python run_experiment.py --data_type classical_bags_inexact --models Sultani TabPFN --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 --eln_list 0.0 --ru_list 1.0 --flip_nr_list 0.0 --flip_ar_list 0.0  --seed_list 0 1 2 3 4 --n_jobs 1 --gpus 2 --target_for_unlabeled fill_unlabel_0 --exp_note tabular_inexact
 
 ```
+# Clone the repository
+git clone https://github.com/SUFE-AILAB/WSADBench.git
+cd WSADBench
 
-### Video Experiments
+# download data 
+# Our tabular datasets are integrated from [ADBench](https://github.com/Minqi824/ADBench), a comprehensive benchmark for unsupervised and supervised outlier detection. Download from https://jihulab.com/BraudoCC/ADBench_datasets
+# here we download two small dataset for test
+mkdir -p WSADBench/datasets/Classical
+wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/25_musk.npz
+wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/blob/master/Classical/6_cardio.npz
 
-```bash
-# Run video anomaly detection
-python run_experiment.py \
-    --data_type video \
-    --models Sultani \
-    --datasets UCF_Crime \
-    --rla_list 1.0 \
-    --n_jobs 1 \
-    --gpus 0
+# new conda environment
 
-# Multi-GPU parallel execution
-python run_experiment.py \
-    --data_type video \
-    --models Sultani \
-    --datasets UCF_Crime \
-    --n_jobs 2 \
-    --rla_list 1.0 \
-    --gpus 0,1
+# set up python packages
+
+
+
+# Run a simple experiment, with one model on the tabular dataset
+python run_experiment.py --data_type tabular_classical --models DevNet 
 ```
 
-### Resume Interrupted Experiments
 
-```bash
-# WSADBench automatically skips completed experiments
-python run_experiment.py --data_type tabular_classical --models DevNet
 
-# Force re-run all experiments
-python run_experiment.py --data_type tabular_classical --models DevNet --NO_RESUME
-```
 
-### Generate Summary Only
 
-```bash
-# Generate summary from existing results without running experiments
-python run_experiment.py --data_type tabular_classical --dry_summary
-```
+
+
+
 
 ---
 
 
 
-## 🏃 Reproduce Different Setting
+## 🏃🏃 Reproduce Different Setting
 
 ### Anomaly Detection (Tabular, CV, NLP and VAD) and Multiple Instance Learning (MIL) Paradigm 
 
