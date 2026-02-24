@@ -1,19 +1,33 @@
-pyod==1.0.1
-#rtdl==0.0.14.dev5  # supports PyTorch 2.x
+# === Core Data Science ===
+numpy==1.26.4             # 必须限制版本，防止 numpy 2.0 兼容性问题
+pandas==2.3.3
 scikit-learn==1.6.1
-# torch
-keras==3.9.0
-# tensorflow
-delu==0.0.26
+scipy
+tqdm==4.67.1
+matplotlib
+openpyxl==3.1.5         # 用于保存 Excel 结果
+xlrd==2.0.1
+
+# === Machine Learning Baselines ===
+pyod==1.0.1
 lightgbm==4.6.0
 xgboost==2.1.4
-catboost==1.2.7 # pip install catboost --prefer-binary
-copulas==0.12.1
-combo==0.1.3
-barbar==0.2.1
+catboost==1.2.8
+tabpfn==6.2.0           # 你的代码里用到了 TabPFN
+
+# === Weak Supervision / Data Quality ===
+cleanlab==2.7.1         # 核心依赖，之前缺失
+
+# === Deep Learning Helpers ===
+# torch, torchvision, torchaudio 建议让用户单独安装以匹配 CUDA 版本
+# 但如果不介意 CPU 版本或默认 CUDA，可以解开下面这行
+# torch>=2.0.0
+pytorchvideo==0.1.5     # 视频处理依赖
+einops                  # 视频/CV 模型常用
+delu==0.0.26
 fsspec==2025.3.0
-tqdm==4.67.1
+
+# === Utilities ===
+PyYAML>=6.0             # 解析 config 文件必须
 wget==3.2
-xlrd==2.0.1
-openpyxl==3.1.5
-einops
+copulas
