@@ -1,32 +1,30 @@
-#classical:
-#  DATA_DIR: 'WSADBench/datasets/Classical/'
-#  END_WITH: ".npz"
-#CV_by_ResNet18:
-#  DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18/'
-#  END_WITH: ".npz"
-#CV_by_ViT:
-#  DATA_DIR: 'WSADBench/datasets/CV_by_ViT/'
-#  END_WITH: ".npz"
-#NLP_by_BERT:
-#  DATA_DIR: 'WSADBench/datasets/NLP_by_BERT/'
-#  END_WITH: ".npz"
-#NLP_by_RoBERTa:
-#  DATA_DIR: 'WSADBench/datasets/NLP_by_RoBERTa/'
-#  END_WITH: ".npz"
-#Classical_bags_inexact:    # tabular -> video:inexact
-#  DATA_DIR: 'WSADBench/datasets/Classical_bags_inexact/'
-#  END_WITH: ".npz"
+classical:
+  DATA_DIR: 'WSADBench/datasets/Classical/'
+  END_WITH: ".npz"
+CV_by_ResNet18:
+  DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18/'
+  END_WITH: ".npz"
+CV_by_ViT:
+  DATA_DIR: 'WSADBench/datasets/CV_by_ViT/'
+  END_WITH: ".npz"
+NLP_by_BERT:
+  DATA_DIR: 'WSADBench/datasets/NLP_by_BERT/'
+  END_WITH: ".npz"
+NLP_by_RoBERTa:
+  DATA_DIR: 'WSADBench/datasets/NLP_by_RoBERTa/'
+  END_WITH: ".npz"
+
 CV_by_ResNet18_OOD:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_OOD/cache/
   DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18_OOD/'
   END_WITH: ".pkl"
 
-#tabular_info:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_OOD/cache/
-#  DATA_DIR: 'myRes/q_data'
-#  END_WITH: ".pkl"
+classical_bags_inexact:    # tabular -> video:inexact
+  DATA_DIR: 'WSADBench/datasets/Classical_bags_inexact/'
+  END_WITH: ".npz"
+CV_by_ViT_bags_inexact:
+  DATA_DIR: 'WSADBench/datasets/CV_by_ViT_bags_inexact/'
+  END_WITH: ".npz"
 
-#CV_by_ResNet18_OOD_pic:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_OOD/cache/
-#  DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18_OOD_pic/'
-#  END_WITH: ".pkl"
 video:
   UCF_Crime:
       MANAGER_CLASS: 'WSADBench.datasets.dataset_support.video_dataset_manager.UCFCrimeManager'
