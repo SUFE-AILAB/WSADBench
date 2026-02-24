@@ -201,7 +201,7 @@ python -m run_experiment --data_type video --models Sultani ARNet --dataset TAD 
 
 ### Foundation Models in Anomaly Detection
 
-See Section 4.2.1 Foundation Models for details
+See Section 4.2.1 Foundation Models for details.
 
 ```Shell
 # --- 1. TabPFN ---
@@ -213,16 +213,37 @@ python -m run_experiment --data_type tabular_classical --models TabPFN
 python -m run_experiment --data_type tabular_classical --models LimiX
 ```
 
-### 4.2.2 The Value of Unlabeled Data.
+### Sensitivity Analysis: Incomplete and Inaccurate Supervision
+
+This section evaluates model robustness under varying degrees of supervision completeness and label quality, corresponding to **Section 4.2.2 (The Value of Unlabeled Data)** and **Section 4.2.3 (Sensitivity to Label Noise)**.
 
 ```Shell
+# The Value of Unlabeled Data (Incomplete Supervision)
+# --- 1. Varying Labeled Anomaly Ratio (RLA) ---
+# Evaluate DevNet on classical tabular data with labeled anomaly ratios ranging from 1% to 100%.
+python -m run_experiment --data_type tabular_classical --models DevNet --rla_list 0.01 0.05 0.1 0.25 0.5 1.0 
 
-```
+# Evaluate DeepSAD on CV (ViT) features with a specific list of labeled sample counts/ratios.(nla)
+python -m run_experiment --data_type tabular_CV_by_ViT --models DeepSAD --rla_list 1 3 5 10 15 20 50 
 
-### 4.2.3 Sensitivity to Label Noise.
+# --- 2. Varying Unlabeled Data Ratio (RU) ---
+# Evaluate REPEN on NLP (RoBERTa) features, varying both labeled anomalies and unlabeled data size.
+# This tests the model's ability to leverage unlabeled data (See Section 4.2.2).
+python -m run_experiment --data_type tabular_NLP_by_RoBERTa --models REPEN --rla_list 1 10 20 50 --ru_list 20 50 200 1000
 
-```Shell
 
+# Sensitivity to Label Noise (Inaccurate Supervision)
+# --- 3. Noise in Normal Labels (False Positives) ---
+# Simulate scenarios where normal samples are wrongly labeled as anomalies (flip_nr).
+python -m run_experiment --data_type tabular_classical --models RoSAS --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --noise_type label_contamination 
+
+# --- 4. Noise in Anomaly Labels (False Negatives) ---
+# Simulate scenarios where actual anomalies are wrongly labeled as normal (flip_ar).
+python -m run_experiment --data_type tabular_classical --models RoSAS --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --noise_type label_contamination 
+
+# --- 5. Mixed Label Noise (Symmetric/Asymmetric) ---
+# Evaluate robustness when both types of label errors exist simultaneously.
+python -m run_experiment --data_type tabular_classical --models DevNet --flip_nr_list 0.01 0.05 0.1 0.25 0.5 --flip_ar_list 0.01 0.05 0.1 0.25 0.5 --noise_type label_contamination
 ```
 
 ### OOD
