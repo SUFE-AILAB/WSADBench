@@ -39,8 +39,8 @@ WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, 
 
 ### Prerequisites
 
-- Python 3.9+
-- CUDA 11.8+ (for GPU support)
+- Python 3.9
+- CUDA 11.5+ (for GPU support)
 
 ### Setup
 
@@ -71,41 +71,53 @@ bash setup.sh
 
 ## 🏃 Quick Start
 
-use installment and one line request to tell the usage 
+Get `WSADBench` with this step-by-step guide.
 
+### 1. Installation & Environment
 
-
-
-
-
+Clone the repository (using the `zsy_fix` branch) and set up the environment with one block of commands:
 
 ```
-# Clone the repository
-git clone https://github.com/SUFE-AILAB/WSADBench.git
+# 1. Clone the specific branch and enter directory
+git clone -b zsy_fix https://github.com/SUFE-AILAB/WSADBench.git
 cd WSADBench
+# 2. Create and activate conda environment (Python 3.9)
+conda create --name wsad_env python=3.9.21 -y
+conda activate wsad_env
+# 3. Install dependencies (using Tsinghua mirror for speed)
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
 
-# download data 
-# Our tabular datasets are integrated from [ADBench](https://github.com/Minqi824/ADBench), a comprehensive benchmark for unsupervised and supervised outlier detection. Download from https://jihulab.com/BraudoCC/ADBench_datasets
-# here we download two small dataset for test
+### 2. Prepare Sample Data
+
+Download two lightweight tabular datasets (`musk` and `cardio`) from the mirror to verify the installation.
+
+```
 mkdir -p WSADBench/datasets/Classical
 wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/25_musk.npz
-wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/blob/master/Classical/6_cardio.npz
-
-# new conda environment
-
-# set up python packages
-
-
-
-# Run a simple experiment, with one model on the tabular dataset
-python run_experiment.py --data_type tabular_classical --models DevNet 
+wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/6_cardio.npz
 ```
 
+### 3. Run Demo Experiment
 
+Run a simple experiment using the **DevNet** model on the downloaded tabular datasets.
 
+```
+python run_experiment.py --data_type tabular_classical --models DevNet --seed_list 102
+```
 
+### 4. Expected Output
 
+If the experiment runs successfully, you will see the results printed in the console and saved to `results/`.
 
+**Console Log / Result File Content:**
+
+> File location: `WSADBench/results/tabular_classical/detail/DevNet/DevNet_results.jsonl`
+
+```
+{"model":"DevNet","dataset":"25_musk","rla":1.0,"eln":0.0,"ru":1.0,"flip_normal_ratio":0.0,"flip_abnormal_ratio":0.0,"target_for_unlabeled":"fill_unlabel_0","seed":102,"aucroc":1.0,"aucpr":1.0,"noise_type":null,"is_cleanlab":"false","fit_time":12.1113946438,"inference_time":0.0011568069,"n_train":2143,"n_test":919,"n_train_anomalies":68,"n_test_anomalies":29,"error":"","data_type":"tabular_classical","exp_note":"None"}
+{"model":"DevNet","dataset":"6_cardio","rla":1.0,"eln":0.0,"ru":1.0,"flip_normal_ratio":0.0,"flip_abnormal_ratio":0.0,"target_for_unlabeled":"fill_unlabel_0","seed":102,"aucroc":0.9899016742,"aucpr":0.9362706439,"noise_type":null,"is_cleanlab":"false","fit_time":9.5926368237,"inference_time":0.0004396439,"n_train":1281,"n_test":550,"n_train_anomalies":123,"n_test_anomalies":53,"error":"","data_type":"tabular_classical","exp_note":"None"}
+```
 
 
 
