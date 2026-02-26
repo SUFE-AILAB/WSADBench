@@ -13,7 +13,7 @@ WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, 
 ## 📋 Table of Contents
 
 - [Key Features](#-key-features)
-- [Installation](#-installation)
+- [Prerequisites](#-prerequisites)
 - [Quick Start](#-quick-start)
 - [Data Preparation](#-data-preparation)
 - [Supported Models](#-supported-models)
@@ -35,39 +35,12 @@ WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, 
 
 ---
 
-## 📦 Installation
-
-### Prerequisites
+## 📦 Prerequisites
 
 - Python 3.9
 - CUDA 11.5+ (for GPU support)
 
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/WSADBench.git
-cd WSADBench
-
-# Create conda environment
-conda create -n wsad python=3.9 -y
-conda activate wsad
-
-# Install PyTorch (adjust CUDA version as needed)
-pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu118
-
-# Install dependencies
-pip install -r requirements.txt
-pip install pytorchvideo opencv-python
-```
-
-Alternatively, use the provided setup script:
-
-```bash
-bash setup.sh
-```
-
----
+### 
 
 ## 🏃 Quick Start
 
@@ -121,7 +94,12 @@ If the experiment runs successfully, you will see the results printed in the con
 
 
 
----
+## 📊 Data Preparation
+
+Our benchmark datasets are collected and integrated from two primary sources. Please download them to reproduce the experiments:
+
+* **[ADBench Datasets](https://jihulab.com/BraudoCC/ADBench_datasets):** A portion of our data (tabular, image, and text features) is integrated from [ADBench](https://github.com/Minqi824/ADBench), a comprehensive benchmark for unsupervised and supervised outlier detection. 
+* **[WSADBench Official Datasets](https://modelscope.cn/datasets/mac4mac/WSADBench-Datasets/files):** The remaining datasets, including Video Anomaly Detection (VAD), Out-of-Distribution (OOD) scenarios, and classical tabular MIL bags, are exclusively provided and hosted on our ModelScope repository.
 
 
 
@@ -237,27 +215,6 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 
 
 
-
-
-## 📊 Data Preparation
-
-> **Note**: The complete benchmark datasets (including pre-extracted features for all modalities) will be released after the paper is accepted. For video datasets, we have unified the pretrained models used for feature extraction and re-extracted all features from the original videos to ensure consistency. The feature extraction code is available in this repository.
-
-Datasets should be prepared as symbolic links in the `WSADBench/datasets/` directory. See **[DATASETS.md](DATASETS.md)** for detailed instructions on:
-
-- Download links for all supported datasets
-- Preprocessing instructions for each data type
-- Directory structure requirements
-- Feature extraction scripts (for CV/NLP features)
-
-**Quick Setup:**
-```bash
-# After downloading datasets, create symlinks
-ln -s /path/to/your/classical_datasets WSADBench/datasets/Classical
-ln -s /path/to/your/video_features WSADBench/datasets/CV_by_I3D
-ln -s /path/to/your/cv_features WSADBench/datasets/CV_by_ResNet18
-```
-
 ### Supported Data Types
 
 | Data Type | CLI Flag | Description |
@@ -268,8 +225,7 @@ ln -s /path/to/your/cv_features WSADBench/datasets/CV_by_ResNet18
 | NLP Features (BERT) | `tabular_NLP_by_BERT` | Text embeddings from BERT |
 | NLP Features (RoBERTa) | `tabular_NLP_by_RoBERTa` | Text embeddings from RoBERTa |
 | Video | `video` | Video anomaly detection (I3D features) |
-| MIL Bags (Classical) | `classical_bags_inexact` | Classical data in MIL bag format |
-| MIL Bags (CV) | `CV_by_ViT_bags_inexact` | CV features in MIL bag format |
+| MIL Bags | `classical_bags_inexact` | Classical data in MIL bag format |
 
 ---
 
