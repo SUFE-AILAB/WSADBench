@@ -99,7 +99,32 @@ If the experiment runs successfully, you will see the results printed in the con
 Our benchmark datasets are collected and integrated from two primary sources. Please download them to reproduce the experiments:
 
 * **[ADBench Datasets](https://jihulab.com/BraudoCC/ADBench_datasets):** A portion of our data (tabular, image, and text features) is integrated from [ADBench](https://github.com/Minqi824/ADBench), a comprehensive benchmark for unsupervised and supervised outlier detection. 
+
 * **[WSADBench Official Datasets](https://modelscope.cn/datasets/mac4mac/WSADBench-Datasets/files):** The remaining datasets, including Video Anomaly Detection (VAD), Out-of-Distribution (OOD) scenarios, and classical tabular MIL bags, are exclusively provided and hosted on our ModelScope repository.
+
+To make dataset preparation seamless and space-efficient, we provide a unified Python script (`download_dataset.py`). This smart script automatically handles:
+
+- **ADBench Datasets (from JihuLab):** Directly pulls the ready-to-use `.npz` files via HTTP without requiring Git LFS.
+
+- **WSADBench Official Datasets (from ModelScope):** Downloads, verifies split chunks, extracts, and immediately deletes the original `.tar` archives to save your disk space.
+
+```
+# Download all WSADBench datasets and all ADBench datasets at once.
+python WSADBench/datasets/download_dataset.py --datasets WSAD ADBench
+
+# Download all VAD datasets extracted by a specific pretrained model (e.g., all 4 datasets for MViT_32).
+python WSADBench/datasets/download_dataset.py --datasets CV_by_MViT_32
+
+# Download only one specific dataset for a specific pretrained model (e.g., only shanghaitech for MViT_32).
+python WSADBench/datasets/download_dataset.py --datasets CV_by_MViT_32/shanghaitech
+
+# Download specific tabular benchmarks (e.g., Classical, CV_by_ResNet18) directly from the ADBench repository.
+python WSADBench/datasets/download_dataset.py --datasets Classical
+```
+
+
+
+
 
 
 
