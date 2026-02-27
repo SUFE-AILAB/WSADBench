@@ -240,9 +240,11 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 
 
 
-## 🤖🤖Extra_environment
+## 🤖🤖 Extra_environment
 
-### tabr
+some model have conflict in the main pip environment, need to be run in the extra pip environment
+
+### TabR-S
 
 ```
 # 2. Create and activate conda environment (Python 3.9)
@@ -250,13 +252,24 @@ conda create --name wsad_tabr python=3.9.21 -y
 conda activate wsad_tabr
 # 3. Install dependencies (using Tsinghua mirror for speed)
 pip install -r requirements/req_tabr.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# run TabR-S
+python run_experiment.py --data_type tabular_classical --models TabR_S --seed_list 102
 ```
 
 
 
+### LimiX
 
 
-### Supported Data Types
+
+### PyOD
+
+
+
+
+
+## Supported Data Types
 
 | Data Type | CLI Flag | Description |
 |-----------|----------|-------------|
