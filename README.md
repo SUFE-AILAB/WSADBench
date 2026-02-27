@@ -40,7 +40,7 @@ WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, 
 - Python 3.9
 - CUDA 11.5+ (for GPU support)
 
-### 
+
 
 ## 🏃 Quick Start
 
@@ -240,9 +240,11 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 
 
 
-## 🤖🤖 Extra_environment
+## 🤖🤖 Extra operation for some models
 
-some model have conflict in the main pip environment, need to be run in the extra pip environment
+some model have conflict in the main pip environment, need to be run in the extra pip environment.
+
+some model need ckpts
 
 ### TabR-S
 
@@ -261,9 +263,47 @@ python run_experiment.py --data_type tabular_classical --models TabR_S --seed_li
 
 ### LimiX
 
+```
+# new ckpt folder in main folder, if ckpt folder not exist
+mkdir ckpt
+# pull ckpt
+wget "https://modelscope.cn/api/v1/datasets/mac4mac/WSADBench-Datasets/repo?Revision=master&FilePath=ckpt/LimiX-16M.ckpt" -O ckpt/LimiX-16M.ckpt
+
+# 2. Create and activate conda environment (Python 3.9)
+conda create --name wsad_limix python=3.12.7 -y
+conda activate wsad_limix
+
+# 3. Install dependencies (using Tsinghua mirror for speed)
+# get the wheel. if too slow, use: wget "https://modelscope.cn/api/v1/datasets/mac4mac/WSADBench-Datasets/repo?Revision=master&FilePath=env/flash_attn-2.8.0.post2%2Bcu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" -O flash_attn-2.8.0.post2+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+wget -O flash_attn-2.8.0.post2+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.0.post2/flash_attn-2.8.0.post2+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1
+
+pip install flash_attn-2.8.0.post2+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+
+pip install scikit-learn  einops  huggingface-hub matplotlib networkx numpy pandas  scipy tqdm typing_extensions xgboost kditransform hyperopt copulas cleanlab
+
+# remove wheel file
+rm flash_attn-2.8.0.post2+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+
+# run LimiX
+python run_experiment.py --data_type tabular_classical --models LimiX --seed_list 102
+```
+
 
 
 ### PyOD
+
+
+
+### TabPFN
+
+```
+# new ckpt folder in main folder, if ckpt folder not exist
+mkdir ckpt
+# pull ckpt
+wget "https://modelscope.cn/api/v1/datasets/mac4mac/WSADBench-Datasets/repo?Revision=master&FilePath=ckpt/tabpfn-v2.5-classifier-v2.5_default.ckpt" -O ckpt/tabpfn-v2.5-classifier-v2.5_default.ckpt
+```
 
 
 
