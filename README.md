@@ -240,6 +240,22 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 
 
 
+## 🤖🤖Extra_environment
+
+### tabr
+
+```
+# 2. Create and activate conda environment (Python 3.9)
+conda create --name wsad_tabr python=3.9.21 -y
+conda activate wsad_tabr
+# 3. Install dependencies (using Tsinghua mirror for speed)
+pip install -r requirements/req_tabr.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+
+
+
+
 ### Supported Data Types
 
 | Data Type | CLI Flag | Description |
