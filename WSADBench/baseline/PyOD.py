@@ -25,7 +25,7 @@ from pyod.models.rod import ROD
 from pyod.models.sod import SOD
 from pyod.models.sos import SOS
 from pyod.models.vae import VAE
-from pyod.models.auto_encoder_torch import AutoEncoder
+from pyod.models.auto_encoder import AutoEncoder
 from pyod.models.so_gaal import SO_GAAL
 from pyod.models.mo_gaal import MO_GAAL
 from pyod.models.xgbod import XGBOD
