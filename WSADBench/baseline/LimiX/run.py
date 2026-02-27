@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import torch
-from tqdm import tqdm
-
 from WSADBench.myutils import Utils
 from typing import Optional, List
 import os
@@ -12,7 +10,7 @@ class LimiX16M:
     def __init__(self,
                  device ='cuda:0',
                  input_dim = None,
-                 model_path = 'WSADBench/baseline/LimiX/model_path/LimiX-16M.ckpt',
+                 model_path = 'ckpt/LimiX-16M.ckpt',
                  mix_precision:bool=True,
                  inference_config: Optional[str]='WSADBench/baseline/LimiX/LimiXmain/config/cls_default_16M_retrieval.json',
                  categorical_features_indices: Optional[List[int]] = None,
@@ -83,47 +81,9 @@ class LimiX16M:
 
         return self
 
-    # def predict_score(self,X_train,y_train,X_test):
-    #
-    #     scores = self.model.predict(X_train,y_train,X_test)
-    #
-    #     return scores
-    def predict_score(self, X_train, y_train, X_test):
-        # 临时给一个rnd的seed
-        max_limit = 4000
-        if X_train.shape[0] > max_limit:
-            rnd = np.random.RandomState(self.seed)
-            idx = rnd.permutation(X_train.shape[0])[:max_limit]
-            # 6. 根据索引筛选数据
-            X_train = X_train[idx]
-            y_train = y_train[idx]
-            # self.use_batch = True
-            print("分批处理")
-            # 同时对齐y_train
+    def predict_score(self,X_train,y_train,X_test):
 
-        # --- 2. 测试集分批处理 (解决OOM的核心) ---
-        batch_size = 512  # 建议根据显存大小调整 (1024 ~ 4096)
-        scores_list = []
-        n_test = X_test.shape[0]
+        scores = self.model.predict(X_train,y_train,X_test)
 
-        print(f"开始推理: 测试集共 {n_test} 条, Batch Size = {batch_size}")
-
-        for i in tqdm(range(0, n_test, batch_size)):
-            # 切片取出当前的 batch
-            X_test_batch = X_test[i: i + batch_size]
-
-            # 推理当前 batch
-            # 注意: X_train, y_train 作为 Context 必须每次都传
-            batch_score = self.model.predict(X_train, y_train, X_test_batch)
-            scores_list.append(batch_score)
-
-
-
-        # --- 3. 结果拼接 ---
-        scores = np.concatenate(scores_list, axis=0)
-        print("推理完成。")
-        # ---- 修改结束 ----
-
-        # scores = self.model.predict(X_train, y_train, X_test)
         return scores
 

@@ -2,7 +2,6 @@
 import numpy as np
 import torch
 from tqdm import tqdm
-
 from WSADBench.myutils import Utils
 from tabpfn import TabPFNClassifier
 from tabpfn.constants import ModelVersion
@@ -33,7 +32,7 @@ class TabPFN:
         self.device = self.utils.get_device(True)  # get device
         self.seed = seed
 
-        self.clf = TabPFNClassifier(device='cuda', model_path="myRes/ckpt/tabpfn-v2.5-classifier-v2.5_default.ckpt",
+        self.clf = TabPFNClassifier(device='cuda', model_path="ckpt/tabpfn-v2.5-classifier-v2.5_default.ckpt",
                                     random_state=seed)  # Uses TabPFN 2.5 weights, finetuned on real data.
         self.batch_size = batch_size
         self.model_name = model_name
