@@ -129,7 +129,6 @@ class ExperimentRunner:
             "tabular_NLP_by_RoBERTa",
             # tabular_inexact
             "classical_bags_inexact",
-            "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
 
@@ -1215,7 +1214,6 @@ def main():
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
-            "CV_by_ViT_bags_inexact"
         ],
         required=True,
         default=["tabular_classical"],
