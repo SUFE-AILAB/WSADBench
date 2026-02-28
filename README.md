@@ -48,11 +48,11 @@ Get `WSADBench`  quickly with this step-by-step guide.
 
 ### 1. Installation & Environment
 
-Clone the repository (using the `zsy_fix` branch) and set up the environment with one block of commands:
+Clone the repository and set up the environment with one block of commands:
 
 ```
 # 1. Clone the specific branch and enter directory
-git clone -b zsy_fix https://github.com/SUFE-AILAB/WSADBench.git
+git clone https://github.com/SUFE-AILAB/WSADBench.git
 cd WSADBench
 # 2. Create and activate conda environment (Python 3.9)
 conda create --name wsad_env python=3.9.21 -y
@@ -531,7 +531,7 @@ results/
             └── model_stats.json            # Model statistics
 ```
 
----
+<!-- ---
 
 ## 📝 Citation
 
@@ -544,7 +544,7 @@ If you use WSADBench in your research, please cite:
   journal={arXiv preprint},
   year={2025}
 }
-```
+``` -->
 
 ---
 
