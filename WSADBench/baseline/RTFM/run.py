@@ -249,9 +249,9 @@ class RTFM:
     def set_params(self, **params):
         """
         设置模型参数（sklearn兼容）
+            **params: 参数字典
 
         Args:
-            **params: 参数字典
 
         Returns:
             self

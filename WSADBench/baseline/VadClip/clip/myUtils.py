@@ -65,8 +65,8 @@ def setup_logging(log_dir, name='exp'):
     return logger
 
 
-# myLogger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs')
+# myLogger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs')
 
-# with open(r'/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs/exp_202508.log', 'r') as f:
+# with open(r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs/exp_202508.log', 'r') as f:
 #     log_text = f.read()
 #     log_text = log_text.split('start train RTFM...')[-1]

@@ -34,7 +34,7 @@ class AnoDDAE:
         self.device = self.utils.get_device(True)
 
 
-    def fit(self,X_train,y_train,X_test=None,y_test=None):
+    def fit(self,X_train,y_train):
 
         #normal only
         X_train = X_train[y_train == 0]

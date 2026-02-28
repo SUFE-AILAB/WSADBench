@@ -29,6 +29,13 @@ class supervised():
             self.model = self.model_dict[self.model_name]()
         elif self.model_name == 'SVM':
             self.model = self.model_dict[self.model_name](probability=True)
+        elif self.model_name == 'CatB':
+            # 在这里写死 CPU 个数，例如 thread_count=4
+            self.model = self.model_dict[self.model_name](
+                random_state=self.seed,
+                thread_count=10,  # <--- 限制为 4 个线程
+                verbose=0  # 可选：关闭训练日志输出
+            )
         else:
             self.model = self.model_dict[self.model_name](random_state=self.seed)
 

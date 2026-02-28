@@ -6,11 +6,14 @@ import gc
 import torch
 import torch.nn.functional as F
 import numpy as np
+from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import DataLoader, TensorDataset
 import time
 import os
 # import WSADBench.baseline.ARNet.options
 import argparse
+
+from common_utils.baseline_utils import get_gt, write_jsonl
 
 mseloss = torch.nn.MSELoss(reduction='mean')
 mseloss_vector = torch.nn.MSELoss(reduction='none')
@@ -174,7 +177,7 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
         print(f"设备: {device}")
         print(f"DMIL_loss权重: {DMIL_weight}, 中心损失权重: {Center_weight}")     #DMIL_loss 是计算每个视频中top-k的帧级标签和视频级标签的交叉熵损失
                                                                             #中心损失是计算正常片段分数与平均分数差的平方
-    
+    X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     for epoch in range(epochs):
         epoch_start_time = time.time()
         epoch_loss = 0.0
@@ -236,7 +239,42 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
         
         if verbose:
             print(f'Epoch {epoch+1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
-        
+            # --- [新增] 3. 最后一个Epoch进行测试与评估 (参考 Sultani 实现) ---
+        if X_test is not None  and epoch == epochs - 1:
+            trainer.fitted = True
+            model.eval()  # 切换到评估模式
+            with torch.no_grad():
+                # 注意：这里传入的是解包后的 X_test_data
+                scores = trainer.predict_proba(X_test)
+
+                # --- Method 1: Clip/Video-level expanded GT (v2 in reference) ---
+                # 直接将 clip 分数重复 16 次 (参考 fit.py 中的实现)
+                prob = np.repeat(scores, 16)
+                gt = get_gt(len(prob))
+                test_auc_v2 = roc_auc_score(gt, prob)
+                test_ap_v2 = average_precision_score(gt, prob)
+
+                # --- Method 2: Frame-level Interpolated GT (v1 in reference) ---
+                # 使用 _process_video_scores 进行精细化对齐
+                frame_scores, frame_truth = _process_video_scores(
+                    scores, video_shape, y_test_idx, y_test_gt,
+                    y_test_gt_idx, num_clip_frames
+                )
+                test_auc = roc_auc_score(frame_truth, frame_scores)
+                test_ap = average_precision_score(frame_truth, frame_scores)
+
+
+
+                # 写入结果文件
+                write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc, ap=test_ap,
+                            res_type='frame')
+                write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc_v2, ap=test_ap_v2,
+                            res_type='clip')
+
+                if verbose:
+                    print(f"[Result] Frame-level (v1) - AUC: {test_auc:.4f}, AP: {test_ap:.4f}")
+                    print(f"[Result] Clip-level  (v2) - AUC: {test_auc_v2:.4f}, AP: {test_ap_v2:.4f}")
+                model.train()  # 恢复训练模式
         # # 每个epoch后再清理
         gc.collect()
         torch.cuda.empty_cache()
@@ -246,3 +284,32 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
         print("训练完成！")
     
     return train_history
+def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames):
+    """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
+    _clips_num, _crops_num = video_shape
+
+    # 平均每个crop, 获得每个clip的分数
+    scores = scores.reshape(_clips_num, _crops_num)
+    scores = np.mean(scores, axis=1)
+
+    # 还原clip级别score为帧级别score
+    # y_test_idx = data["y_test_idx"]
+    # y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
+    # num_clip_frames = data["NUM_FRAMES"]
+
+    frame_scores = []
+    frame_truth = []
+    for i in range(max(y_test_gt_idx) + 1):
+        select_gt = y_test_gt[y_test_gt_idx == i]
+        select_scores = scores[y_test_idx == i]
+        select_scores = select_scores.repeat(num_clip_frames)
+        common_length = min(len(select_gt), len(select_scores))
+
+        frame_scores.append(select_scores[:common_length])
+        frame_truth.append(select_gt[:common_length])
+
+    frame_scores = np.concatenate(frame_scores, axis=0)
+    frame_truth = np.concatenate(frame_truth, axis=0)
+    # frame_truth存到本地
+    # np.save("frame_label/xd_frame_gt.npy", frame_truth)
+    return frame_scores, frame_truth

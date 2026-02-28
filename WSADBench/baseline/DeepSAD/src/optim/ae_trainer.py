@@ -69,8 +69,8 @@ class AETrainer(BaseTrainer):
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
-                if epoch in self.lr_milestones:
-                    logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_lr()[0]))
+                # if epoch in self.lr_milestones:
+                #     logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_lr()[0]))
 
                 epoch_loss += loss.item()
                 n_batches += 1

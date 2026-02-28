@@ -1,18 +1,14 @@
 import os
-# 限制GPU
-# os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-# print("当前 CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES", "未设置"))
-
-
+from common_utils.baseline_utils import video_data2tabular_data
+import re
 import time
 import gc
 import argparse
-# from cv2 import log
 import numpy as np
 import pandas as pd
 import yaml
 import json
-from sklearn.model_selection import KFold
+
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -37,17 +33,16 @@ from cleanlab.classification import CleanLearning
 from cleanlab.filter import find_label_issues
 from sklearn.ensemble import RandomForestClassifier
 
-class ModelRegistry:
-    """模型注册器，用于管理和创建不同的模型"""
 
+class ModelRegistry:
+    """Model registrar for managing and creating different models."""
     @staticmethod
     def get_model_class(model_class_path: str):
-        """根据模型类路径获取模型类"""
+        """Get the model class according to the model class path."""
         return import_class(model_class_path)
 
     @staticmethod
     def get_default_model_class_path(model_name: str):
-        """获取模型的默认类路径"""
         default_model_map = {
             "RoSAS": "WSADBench.baseline.RoSAS.run.RoSAS",
             "AABiGAN": "WSADBench.baseline.AABiGAN.run.AABiGAN",
@@ -63,7 +58,9 @@ class ModelRegistry:
             "MGFN": "WSADBench.baseline.MGFN.run.MGFN",
             "URDMU": "WSADBench.baseline.URDMU.run.URDMU",
             "RTFM": "WSADBench.baseline.RTFM.run.RTFM",
+            "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "Supervised": "WSADBench.baseline.Supervised.supervised",
+            "IForest": "WSADBench.baseline.PyOD.PYOD",
             "ZhongGCNAD": "WSADBench.baseline.ZhongGCNAD.run.ZhongGCNAD",
             "VadClip": "WSADBench.baseline.VadClip.run.VadClip",
             "TargAD": "WSADBench.baseline.TargAD.run.TargAD",
@@ -75,7 +72,7 @@ class ModelRegistry:
             "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
             "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
             "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M",
-            #无监督
+            # Unsupervised
             "PyOD": "WSADBench.baseline.PyOD.PYOD",
             "IForest": "WSADBench.baseline.PyOD.PYOD",
             "LOF": "WSADBench.baseline.PyOD.PYOD",
@@ -85,7 +82,7 @@ class ModelRegistry:
             "PCA": "WSADBench.baseline.PyOD.PYOD",
             "CBLOF": "WSADBench.baseline.PyOD.PYOD",
             "VAE": "WSADBench.baseline.PyOD.PYOD",
-            
+
             "OCSVM": "WSADBench.baseline.PyOD.PYOD",
             "KNN": "WSADBench.baseline.PyOD.PYOD",
             "HBOS": "WSADBench.baseline.PyOD.PYOD",
@@ -93,57 +90,34 @@ class ModelRegistry:
             "SOS": "WSADBench.baseline.PyOD.PYOD",
             "AAE": "WSADBench.baseline.PyOD.PYOD",
             "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
-            
-
 
         }
         return default_model_map.get(model_name, None)
 
 
 class ExperimentRunner:
-    """通用实验运行器，支持video和tabular数据集"""
-
     def __init__(
-        self,
-        models: List[str],
-        data_type: str,
-        n_jobs=1,
-        output_dir=None,
-        parameter_config_path=None,
-        datasets=None,
-        rla_list=None,
-        eln_list=None,
-        ru_list=None,
-        flip_nr_list=None,
-        flip_ar_list=None,
-        target_for_unlabeled=None,
-        noise_type=None,
-        seed_list=None,
-        gpu_list=None,
-        DEBUG=False,
-        NO_RESUME=False,
-        is_cleanlab=False,
-        exp_note = None,
+            self,
+            models: List[str],
+            data_type: str,
+            n_jobs=1,
+            output_dir=None,
+            parameter_config_path=None,
+            datasets=None,
+            rla_list=None,
+            eln_list=None,
+            ru_list=None,
+            flip_nr_list=None,
+            flip_ar_list=None,
+            target_for_unlabeled=None,
+            noise_type=None,
+            seed_list=None,
+            gpu_list=None,
+            DEBUG=False,
+            NO_RESUME=False,
+            is_cleanlab=False,
+            exp_note=None,
     ):
-        """
-        初始化运行器
-
-        Args:
-            models: 要运行的模型列表
-            data_type: 数据类型，'video' 或 'tabular','tabular_inexact'
-            n_jobs: 并行作业数量，-1表示使用所有CPU核心
-            output_dir: 输出目录
-            parameter_config_path: 参数配置文件路径
-            datasets: 数据集列表
-            rla_list: 标注异常比例列表
-            eln_list: 标注正常相对la比例列表
-            ru_list: 无标签样本比例列表
-            flip_nr_list: 正常样本错误标注比例列表
-            flip_ar_list: 异常样本错误标注比例列表
-            seed_list: 随机种子列表
-            is_clean_lab: 是否开启数据噪声清洗功能，使用cleanlab库
-            gpu_list: 指定使用的GPU列表，如[0,1,2]或"0,1,2"，None表示自动检测
-        """
         self.DEBUG = DEBUG
         self.NO_RESUME = NO_RESUME
         if data_type not in [
@@ -153,12 +127,10 @@ class ExperimentRunner:
             "tabular_CV_by_ViT",
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
-            #tabular_inexact
+            # tabular_inexact
             "classical_bags_inexact",
-            "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
-            "tabular_CV_by_ResNet18_OOD_pic",
 
         ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
@@ -167,10 +139,10 @@ class ExperimentRunner:
         self.data_type = data_type
         self.n_jobs = mp.cpu_count() if n_jobs == -1 else n_jobs
 
-        # 初始化GPU管理器
+        # initial GPUManager
         self.gpu_manager = GPUManager(gpu_list, self.n_jobs)
 
-        # 设置默认输出目录和配置路径
+        # Set default output directory and configuration path
         default_output_dir = f"results/{data_type}"
         if "tabular" in data_type:
             default_config_path = f"WSADBench/model_configs/tabular"
@@ -185,26 +157,25 @@ class ExperimentRunner:
         self.parameter_config_path = Path(parameter_config_path) if parameter_config_path else Path(default_config_path)
         self.parameter_config_path.mkdir(exist_ok=True, parents=True)
 
-        # 创建输出目录结构
         self.detail_dir = self.output_dir / "detail"
         self.summary_dir = self.output_dir / "summary"
         self.detail_dir.mkdir(exist_ok=True, parents=True)
         self.summary_dir.mkdir(exist_ok=True, parents=True)
 
-        # 为每个模型创建子目录
+        # Create a subdirectory for each model
         self.model_dirs = {}
         for model_name in self.models:
             model_dir = self.detail_dir / model_name
             model_dir.mkdir(exist_ok=True, parents=True)
             self.model_dirs[model_name] = model_dir
 
-        # 工具类
+        # Tool class
         self.utils = Utils()
 
-        # 数据生成器
+        # Data generator
         self.data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
 
-        # 实验参数
+        # Experiment parameters
         self.seed_list = seed_list if seed_list is not None else list(range(1, 11))
         self.rla_list = rla_list if rla_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
         self.eln_list = eln_list if eln_list is not None else [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
@@ -216,73 +187,82 @@ class ExperimentRunner:
         self.is_cleanlab = is_cleanlab
         self.exp_note = exp_note
 
-        # 获取数据集列表
+        # Get dataset list
         if datasets is None:
             self.datasets = self.get_datasets()
         else:
             self.datasets = datasets
 
-        # 模型参数字典
+        # Model parameter dictionary
         self.model_params = self._load_model_parameters()
 
-        # 保存模型参数统计
+        # Save model parameter statistics
         self._save_model_stats()
 
-        logger.info(f"初始化模型: {self.models}")
-        logger.info(f"数据类型: {self.data_type}")
-        logger.info(f"并行作业数: {self.n_jobs}")
-        logger.info(f"GPU配置: {self.gpu_manager.get_gpu_assignment_summary()}")
-        logger.info(f"输出目录: {self.output_dir.absolute()}")
-        logger.info(f"参数配置路径: {self.parameter_config_path.absolute()}")
-        logger.info(f"数据集数量: {len(self.datasets)}")
-        logger.info(f"RLA设置: {self.rla_list}")
-        logger.info(f"ELN设置: {self.eln_list}")
-        logger.info(f"无标签样本比例设置: {self.ru_list}")
-        logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
-        logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
-        logger.info(f"无标签样本处理方式: {self.target_for_unlabeled}")
-        logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"是否开启数据噪声清洗功能: {self.is_cleanlab}")
+        logger.info(f"Initializing models: {self.models}")
+        logger.info(f"Data type: {self.data_type}")
+        logger.info(f"Number of parallel jobs: {self.n_jobs}")
+        logger.info(f"GPU configuration: {self.gpu_manager.get_gpu_assignment_summary()}")
+        logger.info(f"Output directory: {self.output_dir.absolute()}")
+        logger.info(f"Parameter config path: {self.parameter_config_path.absolute()}")
+        logger.info(f"Number of datasets: {len(self.datasets)}")
+        logger.info(f"RLA settings: {self.rla_list}")
+        logger.info(f"ELN settings: {self.eln_list}")
+        logger.info(f"Unlabeled sample ratio settings: {self.ru_list}")
+        logger.info(f"Normal sample mislabeling ratio settings: {self.flip_nr_list}")
+        logger.info(f"Anomaly sample mislabeling ratio settings: {self.flip_ar_list}")
+        logger.info(f"Unlabeled sample processing method: {self.target_for_unlabeled}")
+        logger.info(f"Noise type: {self.noise_type}")
+        logger.info(f"Whether to enable data noise cleaning: {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
     def _load_model_parameters(self) -> Dict[str, Dict[str, Any]]:
-        """加载模型参数配置"""
+        """Load model parameter configuration"""
         model_params = {}
 
         for model_name in self.models:
-            # 默认的模型类路径
             default_model_class_path = ModelRegistry.get_default_model_class_path(model_name)
-
-            # 初始化配置
             config = {"model_class": default_model_class_path, "parameters": {}}
 
-            # 尝试加载YAML配置文件
-            config_file = self.parameter_config_path / f"{model_name}.yaml"
-            if config_file.exists():
+            # Get the root path of the base model_configs
+            # If self.parameter_config_path is WSADBench/model_configs/video,
+            # then .parent will automatically truncate it to WSADBench/model_configs
+            if self.parameter_config_path.name != "model_configs":
+                base_config_path = self.parameter_config_path.parent
+            else:
+                base_config_path = self.parameter_config_path
+
+            # Recursively find the corresponding YAML files in the model_configs root directory and all its subdirectories
+            yaml_files = list(base_config_path.rglob(f"{model_name}.yaml"))
+
+            if yaml_files:
+                # Take the first found YAML file
+                config_file = yaml_files[0]
                 try:
                     with open(config_file, "r", encoding="utf-8") as f:
                         yaml_config = yaml.safe_load(f)
                         if yaml_config:
-                            # 如果配置文件中指定了model_class，则使用它
+                            # Use the model_class specified in the config file if present
                             if "model_class" in yaml_config:
                                 config["model_class"] = yaml_config["model_class"]
 
-                            # 如果配置文件中有parameters，则更新参数
+                            # Update parameters if the config file contains a "parameters" field
                             if "parameters" in yaml_config:
                                 config["parameters"].update(yaml_config["parameters"])
                             else:
-                                # 向后兼容：将其他所有字段视为参数
+                                # Backward compatibility: treat all other fields as parameters
                                 yaml_params = {k: v for k, v in yaml_config.items() if k != "model_class"}
                                 if yaml_params:
                                     config["parameters"].update(yaml_params)
 
-                            logger.info(f"从 {config_file} 加载了 {model_name} 的配置")
-                            logger.info(f"模型类: {config['model_class']}")
+                            logger.info(f"Loaded configuration for {model_name} from {config_file}")
+                            logger.info(f"Model class: {config['model_class']}")
                 except Exception as e:
-                    logger.warning(f"加载 {config_file} 失败: {e}")
+                    logger.warning(f"Failed to load {config_file}: {e}")
             else:
-                logger.info(f"未找到 {model_name} 的配置文件 {config_file}，使用默认配置")
-                logger.info(f"默认模型类: {config['model_class']}")
+                logger.info(
+                        f"No configuration file found for {model_name} in {base_config_path} and its subdirectories, using default configuration")
+                logger.info(f"Default model class: {config['model_class']}")
 
             if config["model_class"] is None:
                 raise ValueError(f"Unknown model: {model_name} Please check the model name or configuration file.")
@@ -291,12 +271,12 @@ class ExperimentRunner:
 
         return model_params
 
-    def _save_model_stats(self):  # TODO: 将这部分统计修改为拟合完毕之后再保存
-        """保存模型参数统计信息"""
+    def _save_model_stats(self):
+        """Save statistical information of model parameters"""
         for model_name in self.models:
             model_config = self.model_params.get(model_name, {})
 
-            # 准备统计信息
+            # Prepare statistical information
             stats = {
                 "model_name": model_name,
                 "model_class": model_config.get("model_class", "Unknown"),
@@ -305,7 +285,7 @@ class ExperimentRunner:
                 "data_type": self.data_type,
             }
 
-            # 尝试计算参数大小
+            # Try to calculate the size of parameters
             try:
                 temp_model = self.create_model(self.model_params, model_name, seed=1)
 
@@ -316,18 +296,19 @@ class ExperimentRunner:
                             stats["parameter_count"] = param_stats["total"]
                             stats["parameter_stats"] = param_stats
                         else:
-                            logger.warning(f"{model_name} 的 parameter_count 方法返回格式不符合预期: {param_stats}")
+                            logger.warning(
+                                f"The return format of the parameter_count method for {model_name} does not meet expectations: {param_stats}")
                             stats["parameter_count"] = "Unknown"
                     except Exception as e:
-                        logger.warning(f"调用 {model_name} 的 parameter_count 方法失败: {e}")
+                        logger.warning(f"Failed to call the parameter_count method of {model_name}: {e}")
                         stats["parameter_count"] = "Unknown"
                 elif hasattr(temp_model, "get_params"):
-                    # sklearn风格的模型
+                    # sklearn-style model
                     model_params = temp_model.get_params()
                     stats["sklearn_params"] = model_params
                     stats["parameter_count"] = len(model_params)
                 elif hasattr(temp_model, "state_dict"):
-                    # PyTorch模型
+                    # PyTorch model
                     state_dict = temp_model.state_dict()
                     total_params = sum(p.numel() for p in state_dict.values() if hasattr(p, "numel"))
                     stats["parameter_count"] = int(total_params)
@@ -338,102 +319,89 @@ class ExperimentRunner:
                 gc.collect()
 
             except Exception as e:
-                logger.warning(f"无法计算 {model_name} 的参数大小: {e}")
+                logger.warning(f"Failed to calculate the parameter size of {model_name}: {e}")
                 stats["parameter_count"] = "Unknown"
                 stats["error"] = str(e)
 
-            # 保存统计信息
+            # Save statistical information
             stats_file = self.model_dirs[model_name] / "model_stats.json"
             with open(stats_file, "w", encoding="utf-8") as f:
                 json.dump(stats, f, indent=2, ensure_ascii=False, default=str)
 
-            logger.info(f"保存 {model_name} 模型统计信息到: {stats_file}")
+            logger.info(f"Saved statistical information of {model_name} model to: {stats_file}")
 
     def get_datasets(self):
-        """获取数据集列表, 这里用于没有指定数据集时获取最合适的默认测试数据集"""
+        """Get dataset list, used here to obtain the most suitable default test datasets when no datasets are specified"""
         if self.data_type == "video":
             datasets = self.data_generator.generate_dataset_list()["video"]
-            logger.info(f"找到 {len(datasets)} 个Video数据集")
-        elif self.data_type == "tabular_classical":  # tabular
+            logger.info(f"Found {len(datasets)} Video datasets")
+        elif self.data_type == "tabular_classical":
             datasets = self.data_generator.generate_dataset_list()["classical"]
-            logger.info(f"找到 {len(datasets)} 个Classical数据集")
-        elif self.data_type == "tabular_CV_by_ResNet18":  # tabular
+            logger.info(f"Found {len(datasets)} Classical datasets")
+        elif self.data_type == "tabular_CV_by_ResNet18":
             datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18数据集")
-        elif self.data_type == "tabular_CV_by_ViT":  # tabular
+            logger.info(f"Found {len(datasets)} CV_by_ResNet18 datasets")
+        elif self.data_type == "tabular_CV_by_ViT":
             datasets = self.data_generator.generate_dataset_list()["CV_by_ViT"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ViT数据集")
-        elif self.data_type == "tabular_NLP_by_BERT":  # tabular
+            logger.info(f"Found {len(datasets)} CV_by_ViT datasets")
+        elif self.data_type == "tabular_NLP_by_BERT":
             datasets = self.data_generator.generate_dataset_list()["NLP_by_BERT"]
-            logger.info(f"找到 {len(datasets)} 个NLP_by_BERT数据集")
-        elif self.data_type == "tabular_NLP_by_RoBERTa":  # tabular
+            logger.info(f"Found {len(datasets)} NLP_by_BERT datasets")
+        elif self.data_type == "tabular_NLP_by_RoBERTa":
             datasets = self.data_generator.generate_dataset_list()["NLP_by_RoBERTa"]
-            logger.info(f"找到 {len(datasets)} 个NLP_by_RoBERTa数据集")
-        elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
+            logger.info(f"Found {len(datasets)} NLP_by_RoBERTa datasets")
+        elif self.data_type == "classical_bags_inexact":
             datasets = self.data_generator.generate_dataset_list()["classical_bags_inexact"]
-            logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
-        elif self.data_type == "CV_by_ViT_bags_inexact":
-            datasets = self.data_generator.generate_dataset_list()["CV_by_ViT_bags_inexact"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ViT_bags_inexact数据集")
-        elif self.data_type == "tabular_CV_by_ResNet18_OOD":  # 含pic和emb两种
+            logger.info(f"Found {len(datasets)} classical_bags_inexact datasets")
+        elif self.data_type == "tabular_CV_by_ResNet18_OOD":
             datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD数据集")
-        elif self.data_type == "tabular_CV_by_ResNet18_OOD_pic":  # 含pic和emb两种
-            datasets = self.data_generator.generate_dataset_list()["CV_by_ResNet18_OOD_pic"]
-            logger.info(f"找到 {len(datasets)} 个CV_by_ResNet18_OOD_pic数据集")
+            logger.info(f"Found {len(datasets)} CV_by_ResNet18_OOD datasets")
         return datasets
 
     @staticmethod
     def create_model(model_params, model_name: str, seed: int, feature_shape: tuple = None, **kwargs):
-        """创建模型实例"""
-        # 获取模型配置
+        """Create model instance"""
         model_config = model_params.get(model_name, {})
-
-        # 获取模型类路径
         model_class_path = model_config.get("model_class")
         if not model_class_path:
             raise ValueError(f"No model class path found for {model_name}")
-
-        # 获取模型类
         model_class = ModelRegistry.get_model_class(model_class_path)
-
-        # 获取模型参数
         model_params = model_config.get("parameters", {}).copy()
         model_params.update(kwargs)
 
-        #  删除重复的 model_name
+        # Remove duplicate model_name
         if "model_name" in model_params:
             del model_params["model_name"]
 
-        # 如果模型的 __init__ 方法有 input_dim 参数，且 feature_shape 不为 None，则更新 input_dim
+        # If the __init__ method of the model has an input_dim parameter and feature_shape is not None, update input_dim
         init_signature = inspect.signature(model_class.__init__)
         if "input_dim" in init_signature.parameters and feature_shape is not None:
             model_params["input_dim"] = feature_shape[-1]
-        # 检查构造函数里是否有 model_name 参数
+        # Check if the constructor has a model_name parameter
         if "model_name" in init_signature.parameters:
             model = model_class(model_name=model_name, seed=seed, **model_params)
         else:
             model = model_class(seed=seed, **model_params)
-        # 创建模型
+        # Create model
         return model
 
     @staticmethod
     def _process_video_data(data):
-        """处理video数据的特殊逻辑"""
-        # 训练数据reshape
+        """Special logic for processing video data"""
+        # Reshape training data
         _clips_num, _crops_num, _dim = data["X_train"].shape
         data["X_train"] = data["X_train"].reshape(_clips_num * _crops_num, _dim)
         data["y_train"] = data["y_train"].repeat(_crops_num)
 
-        # 保留视频ID信息并扩展到crops
+        # Preserve video ID information and extend to crops
         if "vid_train" in data:
             data["vid_train"] = data["vid_train"].repeat(_crops_num)
 
-        # 测试数据reshape
+        # Reshape test data
         _clips_num, _crops_num, _dim = data["X_test"].shape
         data["X_test"] = data["X_test"].reshape(_clips_num * _crops_num, _dim)
 
-        # 保留视频ID信息并扩展到crops
+        # Preserve video ID information and extend to crops
         if "vid_test" in data:
             data["vid_test"] = data["vid_test"].repeat(_crops_num)
 
@@ -441,14 +409,14 @@ class ExperimentRunner:
 
     @staticmethod
     def _process_video_scores(scores, video_shape, data):
-        """处理video分数的特殊逻辑：从clip级别还原到帧级别"""
+        """Special logic for processing video scores: restore from clip-level to frame-level"""
         _clips_num, _crops_num = video_shape  # tabular_inexact: [n_bags,n_samples,n_features]
 
-        # 平均每个crop, 获得每个clip的分数
+        # Average over each crop to get the score for each clip
         scores = scores.reshape(_clips_num, _crops_num)
         scores = np.mean(scores, axis=1)
 
-        # 还原clip级别score为帧级别score
+        # Restore clip-level scores to frame-level scores
         y_test_idx = data["y_test_idx"]
         y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
         num_clip_frames = data["NUM_FRAMES"]
@@ -471,23 +439,23 @@ class ExperimentRunner:
 
     @staticmethod
     def _process_tabular_data(data):
-        """处理tabular_inexact数据的特殊逻辑"""
-        # 训练数据 reshape
+        """Special logic for processing tabular_inexact data"""
+        # Reshape training data
         n_bags, n_samples, _dim = data["X_train"].shape
         data["X_train"] = data["X_train"].reshape(n_bags * n_samples, _dim)
-        #包标签广播为实例级标签
+        # Broadcast bag labels to instance-level labels
         data["y_train"] = data["y_train"].repeat(n_samples)
-        data["mask"] = data["mask"].repeat(n_samples)   #掩码必须同时广播
+        data["mask"] = data["mask"].repeat(n_samples)  # Mask must be broadcasted simultaneously
 
-        # 保留包ID信息并扩展到samples
+        # Preserve bag ID information and extend to samples
         if "bag_info_train" in data:
             data["bag_info_train"] = data["bag_info_train"].repeat(n_samples)
 
-        # 测试数据 reshape
+        # Reshape test data
         n_bags, n_samples, _dim = data["X_test"].shape
         data["X_test"] = data["X_test"].reshape(n_bags * n_samples, _dim)
 
-        # 保留包ID信息并扩展到samples
+        # Preserve bag ID information and extend to samples
         if "bag_info_test" in data:
             data["bag_info_test"] = data["bag_info_test"].repeat(n_samples)
 
@@ -495,20 +463,20 @@ class ExperimentRunner:
 
     @staticmethod
     def _process_tabular_scores(scores, data_shape, data):
-        """处理tabular_inexact分数的特殊逻辑：从bag级别还原到样本级别"""
-        n_bags, n_samples = data_shape  # 取出 n_bags 和 n_samples
+        """Special logic for processing tabular_inexact scores: restore from bag-level to sample-level"""
+        n_bags, n_samples = data_shape  # Extract n_bags and n_samples
 
-        # 平均每个样本，获得每个袋的分数
+        # Average over each sample to get the score for each bag
         scores = scores.reshape(n_bags, n_samples)
         scores = np.mean(scores, axis=1)
 
-        # 还原 bag 级别的 score 为样本级别的 score
+        # Restore bag-level scores to sample-level scores
         y_test_idx = data["y_test_idx"]
         y_test_gt, y_test_gt_idx = data["y_test_gt"], data["y_test_gt_idx"]
 
         sample_truth = y_test_gt
         sample_scores = scores.repeat(n_samples)
-        # 对齐长度
+        # Align lengths
         common_length = min(len(sample_truth), len(sample_scores))
         sample_scores = sample_scores[:common_length]
         sample_truth = sample_truth[:common_length]
@@ -516,40 +484,32 @@ class ExperimentRunner:
         return sample_scores, sample_truth
 
     def _save_single_result(self, result):
-        """保存单个实验结果"""
+        """Save a single experimental result"""
         if result is None:
             return
 
         model_name = result["model"]
 
-        # 生成结果文件路径
+        # Generate result file path
         old_result_file = self.model_dirs[model_name] / f"{model_name}_results.csv"
         result_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
 
         if old_result_file.exists():
             logger.warning(
-                f"检测到旧的结果文件 {old_result_file}，请注意新结果将保存为JSONL格式的 {result_file}，建议删除旧文件以避免混淆。旧结果将被备份为.bak文件。"
+                f"Detected old result file {old_result_file}. Note that new results will be saved as {result_file} in JSONL format. It is recommended to delete the old file to avoid confusion. The old results will be backed up as a .bak file."
             )
             backup_file = old_result_file.with_suffix(".csv.bak")
             old_df = read_result_file(old_result_file)
             old_df.to_json(result_file, orient="records", lines=True)
             os.rename(old_result_file, backup_file)
-
-        # 转换为DataFrame
         df = pd.DataFrame([result])
-
-        # 如果文件已存在，追加写入；否则创建新文件
-        # if result_file.exists():
-        #     df.to_csv(result_file, mode="a", header=False, index=False)
-        # else:
-        #     df.to_csv(result_file, index=False)
         if result_file.exists():
             df.to_json(result_file, mode="a", orient="records", lines=True)
         else:
             df.to_json(result_file, orient="records", lines=True)
 
         logger.debug(
-            f"保存 {model_name} 实验结果: "
+            f"save {model_name} experiment result: "
             f"{result.get('dataset')}, "
             f"seed={result.get('seed')}, "
             f"rla={result.get('rla')}, "
@@ -563,10 +523,10 @@ class ExperimentRunner:
             f"exp_note={result.get('exp_note', '')}"
         )
 
+    def _load_finish_exp(self):
 
-    def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
-        
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"] 
+        main_keys = ["model", "dataset", "rla", "eln", "ru", "flip_normal_ratio", "flip_abnormal_ratio",
+                     "target_for_unlabeled", "seed", "is_cleanlab", "exp_note"]
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -574,7 +534,7 @@ class ExperimentRunner:
             if detail_file.exists():
                 try:
                     df = read_result_file(detail_file)
-                    df = df[df["aucroc"].notna() & (df["aucroc"] > 0)]  # 只考虑有结果且大于0的实验
+                    df = df[df["aucroc"].notna() & (df["aucroc"] > 0)]  # Only consider experiments with valid results and values greater than 0
                     main_setting = df[main_keys].drop_duplicates().to_numpy().tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
@@ -582,129 +542,122 @@ class ExperimentRunner:
         return finished_experiments
 
     def run_experiments(self):
-        """运行所有实验"""
         if self.data_type == "video":
             try:
                 vid_info = self.datasets[-1]  # seg_32_200_pm_i3d_mvit
                 self.datasets = self.datasets[:-1]
-                seg_list = [seg for seg in vid_info.split("pm")[0].split("_")[1:] if seg]  # 过滤空字符串
-                pm_list = [pm for pm in vid_info.split("pm")[1].split("_")[1:] if pm]  # 过滤空字符串
-                # 对数据集做单个的product
+                seg_list = [seg for seg in vid_info.split("pm")[0].split("_")[1:] if seg]  # Filter out empty strings
+                pm_list = [pm for pm in vid_info.split("pm")[1].split("_")[1:] if pm]  # Filter out empty strings
+                # Generate individual Cartesian product for the dataset
                 self.datasets = [f"{ds}.s{seg}.m{pm}" for ds in self.datasets for seg in seg_list for pm in pm_list]
             except Exception as e:
-                logger.error(f"处理视频数据集的预训练模型和seg数失败: {e}")
+                logger.error(f"Failed to process the pretrained models and number of seg for the video dataset: {e}")
                 raise e
         elif self.data_type == "tabular_CV_by_ResNet18_OOD":
             try:
-                # self.datasets = ['aitex', 'carpet']
-                class_dict = { 'aitex': ['broken_pick','fuzzyball','weft_crack',],
-                               'carpet': ['color','cut','hole','metal_contamination','thread'],
-                                'elpv': ['mono',],
-                                'hyperkvasir': ['barretts','barretts-short-segment','esophagitis-b-d',],
-                                'mastcam': ['broken-rock','drill-hole','drt','dump-pile','float','meteorite','veins'],
-                                'metal_nut': ['bent','color','flip','scratch']}
-                rate_list = ["0", "25", "50", "75", "100"]
-                # self.datasets = [f"{ds}.{class_type}.{rate}" for ds in self.datasets for class_type in class_dict[ds] for rate in rate_list]
-
+                ds_list = [ds.split('_')[0] if 'metal' not in ds else 'metal_nut' for ds in self.datasets]
+                class_dict = {'aitex': ['broken_pick', 'fuzzyball', 'weft_crack', ],
+                              'carpet': ['color', 'cut', 'hole', 'metal_contamination', 'thread'],
+                              'elpv': ['mono', ],
+                              'hyperkvasir': ['barretts', 'barretts-short-segment', 'esophagitis-b-d', ],
+                              'mastcam': ['broken-rock', 'drill-hole', 'drt', 'dump-pile', 'float', 'meteorite',
+                                          'veins'],
+                              'metal_nut': ['bent', 'color', 'flip', 'scratch']}
+                if len(self.exp_note) == 1 and self.exp_note[0] not in ['rla_emb_near_inc', 'rla_emb_know_far_inc',
+                                                                        'rla_emb_know_near_inc']:
+                    self.datasets = [f"{ds}.{class_type}" for ds, ds_key in zip(self.datasets, ds_list) for class_type
+                                     in class_dict[ds_key]]
+                else:
+                    self.datasets = [f"{ds}._" for ds in self.datasets]  # Use underscore _ to represent class_type
+                    pass
             except Exception as e:
-                logger.error(f"处理OOD数据集失败: {e}")
+                logger.error(f"Failed to process the OOD dataset: {e}")
                 raise e
 
-
-        # 生成实验参数组合  参数传入顺序
-        experiment_params = list(product(self.models, self.datasets, self.rla_list,self.eln_list,self.ru_list,self.flip_nr_list,self.flip_ar_list,self.target_for_unlabeled, self.seed_list,self.is_cleanlab,self.exp_note))
+        # Generate combinations of experimental parameters
+        experiment_params = list(
+            product(self.models, self.datasets, self.rla_list, self.eln_list, self.ru_list, self.flip_nr_list,
+                    self.flip_ar_list, self.target_for_unlabeled, self.seed_list, self.is_cleanlab, self.exp_note))
 
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
             num_before_skip = len(experiment_params)
             experiment_params = [params for params in experiment_params if params not in finished_experiments]
-            logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
+            logger.info(f"Skipping {num_before_skip - len(experiment_params)} completed experiments")
 
         if not experiment_params:
-            logger.info("没有需要运行的实验，所有实验已完成或跳过")
+            logger.info("No experiments need to be run; all experiments are completed or skipped")
             return []
 
-        logger.info(f"总共 {len(experiment_params)} 个实验")
-        logger.info(f"模型: {self.models}")
-        logger.info(f"数据集数量: {len(self.datasets)}")
-        logger.info(f"RLA设置: {self.rla_list}")
-        logger.info(f"ELN设置: {self.eln_list}")
-        logger.info(f"无标签样本比例设置: {self.ru_list}")
-        logger.info(f"正常样本错误标注比例设置: {self.flip_nr_list}")
-        logger.info(f"异常样本错误标注比例设置: {self.flip_ar_list}")
-        logger.info(f"无标签样本处理方式:{self.target_for_unlabeled}")
-        logger.info(f"噪声类型: {self.noise_type}")
-        logger.info(f"是否开启数据噪声清洗功能 {self.is_cleanlab}")
+        logger.info(f"Total number of experiments: {len(experiment_params)}")
+        logger.info(f"Models: {self.models}")
+        logger.info(f"Number of datasets: {len(self.datasets)}")
+        logger.info(f"RLA settings: {self.rla_list}")
+        logger.info(f"ELN settings: {self.eln_list}")
+        logger.info(f"Unlabeled sample ratio settings: {self.ru_list}")
+        logger.info(f"Normal sample mislabeling ratio settings: {self.flip_nr_list}")
+        logger.info(f"Anomalous sample mislabeling ratio settings: {self.flip_ar_list}")
+        logger.info(f"Unlabeled sample processing method: {self.target_for_unlabeled}")
+        logger.info(f"Noise type: {self.noise_type}")
+        logger.info(f"Whether to enable data noise cleaning function: {self.is_cleanlab}")
         logger.info(f"Seeds: {self.seed_list}")
 
-        # 准备传递给子进程的实验配置（不包含完整的runner）
+        # Prepare experimental configuration to pass to child processes (excluding the complete runner)
         experiment_config = {
             "data_type": self.data_type,
-            "model_params": self.model_params,  # 传递模型参数配置
+            "model_params": self.model_params,
         }
 
-        # 为每个任务分配GPU
+        # Assign GPUs to each task
         experiment_params_with_gpu = []
         for i, params in enumerate(experiment_params):
             gpu_id = self.gpu_manager.get_gpu_for_task(i)
             experiment_params_with_gpu.append((params, gpu_id, experiment_config, self.DEBUG))
 
-        # 运行实验
+        # run experiment
         results = []
         if self.n_jobs == 1:
-            # 串行运行
-            for params in tqdm(experiment_params_with_gpu, desc="运行实验"):
-                # 即使串行也设置GPU
+            # Run serially
+            for params in tqdm(experiment_params_with_gpu, desc="run exp"):
                 result = run_single_experiment_with_gpu(params)
                 if result is not None:
                     results.append(result)
                     self._save_single_result(result)
         else:
-            # 并行运行 - 使用torch.multiprocessing
-            # 设置multiprocessing启动方法
+            # Run in parallel - using torch.multiprocessing
+            # Set multiprocessing start method
             if tmp.get_start_method(allow_none=True) != "spawn":
                 tmp.set_start_method("spawn", force=True)
 
-            # 使用torch.multiprocessing.Pool执行
+            # Execute using torch.multiprocessing.Pool
             with tmp.Pool(self.n_jobs) as pool:
                 for result in tqdm(
                         pool.imap(run_single_experiment_with_gpu, experiment_params_with_gpu),
                         total=len(experiment_params_with_gpu),
-                        desc="运行实验",
+                        desc="Running experiments",
                 ):
                     if result is not None:
                         results.append(result)
                         self._save_single_result(result)
 
-        logger.info(f"完成 {len(results)} 个实验")
-
-        # 生成汇总报告
-        # self.generate_summary()
-
+        logger.info(f"Completed {len(results)} experiments")
         return results
 
-    def generate_summary(self):
-        """生成汇总报告"""
-        logger.info("开始生成汇总报告...")
-        generate_summary_only(self.output_dir)
-        logger.info("汇总报告生成完成。")
-
-
 def generate_summary_statistics(df, model_stats, summary_file):
-    """通用的汇总统计函数"""
-    # 汇总的效果
+    """General summary statistics function"""
+    # Performance summary by dataset
     dataset_summary = {}
     for metric in ["aucroc", "aucpr"]:
         dataset_summary[f"{metric}_mean"] = df.groupby(["dataset", "model", "rla"])[metric].mean()
         dataset_summary[f"{metric}_std"] = df.groupby(["dataset", "model", "rla"])[metric].std()
 
-    # 按模型汇总的效果
+    # Performance summary by model
     model_summary = {}
     for metric in ["aucroc", "aucpr"]:
         model_summary[f"{metric}_mean"] = df.groupby("model")[metric].mean()
         model_summary[f"{metric}_std"] = df.groupby("model")[metric].std()
 
-    # 汇总的时间
+    # Time summary by dataset
     dataset_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
         dataset_time_summary[f"{metric}_mean"] = df.groupby(
@@ -712,89 +665,87 @@ def generate_summary_statistics(df, model_stats, summary_file):
         dataset_time_summary[f"{metric}_std"] = df.groupby(
             ["dataset", "model", "rla"])[metric].std()
 
-    # 按模型汇总的时间
+    # Time summary by model
     model_time_summary = {}
     for metric in ["fit_time", "inference_time"]:
         model_time_summary[f"{metric}_mean"] = df.groupby("model")[metric].mean()
         model_time_summary[f"{metric}_std"] = df.groupby("model")[metric].std()
 
-    # 保存汇总结果到Excel
+    # Save summary results to Excel
     with pd.ExcelWriter(summary_file) as writer:
-        # 原始详细结果
-        df.to_excel(writer, sheet_name="详细结果", index=False)
+        # Raw detailed results
+        df.to_excel(writer, sheet_name="Detailed_Results", index=False)
 
-        # 按数据集汇总的效果
+        # Performance summary by dataset
         for metric_name, metric_data in dataset_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"效果_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"Performance_{metric_name}")
 
-        # 按模型汇总的效果
+        # Performance summary by model
         for metric_name, metric_data in model_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"模型_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"Model_{metric_name}")
 
-        # 按数据集汇总的时间
+        # Time summary by dataset
         for metric_name, metric_data in dataset_time_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"时间_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"Time_{metric_name}")
 
-        # 按模型汇总的时间
+        # Time summary by model
         for metric_name, metric_data in model_time_summary.items():
-            metric_data.to_excel(writer, sheet_name=f"模型时间_{metric_name}")
+            metric_data.to_excel(writer, sheet_name=f"Model_Time_{metric_name}")
 
-        # 模型参数统计
+        # Model parameter statistics
         if model_stats:
             stats_df = pd.DataFrame.from_dict(model_stats, orient="index")
-            stats_df.to_excel(writer, sheet_name="模型参数统计")
+            stats_df.to_excel(writer, sheet_name="Model_Parameters")
 
-    logger.info(f"汇总结果已保存到: {summary_file}")
+    logger.info(f"Summary results saved to: {summary_file}")
 
 
 def read_result_file(result_file):
     result_file = Path(result_file)
     suffix = result_file.suffix.lower()
 
-    # 目标 dtype:object
+    # Target dtype: object
     target_object_cols = [
         "rla", "eln", "ru",
         "flip_normal_ratio", "flip_abnormal_ratio",
         "target_for_unlabeled", "seed"
     ]
 
-    # === 1. 读取文件 ===
+    # === 1. Read the file ===
     if suffix == ".csv":
         df = pd.read_csv(result_file, dtype={col: 'object' for col in target_object_cols})
     elif suffix in [".jsonl", ".json"]:
-        # pd.read_json 不支持 dtype
+        # pd.read_json does not support the dtype parameter
         df = pd.read_json(result_file, lines=True)
     else:
         raise ValueError(f"Unsupported file format: {suffix}")
 
-    # === 2. 对于 jsonl 读取的字段，再统一转 dtype ===
+    # === 2. Uniformly convert dtype for columns read from json/jsonl ===
     for col in target_object_cols:
         if col in df.columns:
             df[col] = df[col].astype("object")
 
-    # === 3. 自动处理不同模型结果字段不一致的情况 ===
-    # 缺失字段自动补 NaN
+    # === 3. Automatically handle inconsistent fields across different model results ===
+    # Fill missing fields with NaN (pd.NA)
     for col in target_object_cols:
         if col not in df.columns:
             df[col] = pd.NA
 
     return df
 
-
-
 def print_summary_statistics(df):
-    """通用的打印汇总统计函数"""
+    """General function to print summary statistics."""
     logger.info("\n" + "=" * 50)
-    logger.info("实验结果汇总统计")
+    logger.info("Summary Statistics of Experimental Results")
     logger.info("=" * 50)
 
-    # 总体统计
+    # Overall statistics
     valid_results = df.dropna(subset=["aucroc", "aucpr"])
-    logger.info(f"有效实验数量: {len(valid_results)}/{len(df)}")
+    logger.info(f"Number of valid experiments: {len(valid_results)}/{len(df)}")
 
     if len(valid_results) > 0:
-        # 按模型统计
-        logger.info("\n按模型统计:")
+        # Statistics by model
+        logger.info("\nStatistics by model:")
         for model in sorted(valid_results["model"].unique()):
             model_data = valid_results[valid_results["model"] == model]
             logger.info(
@@ -804,18 +755,18 @@ def print_summary_statistics(df):
 
 
 def generate_summary_only(output_dir):
-    """独立的汇总函数，仅用于汇总现有结果"""
+    """Independent summary function, solely for aggregating existing results."""
     output_dir = Path(output_dir)
     detail_dir = output_dir / "detail"
     summary_dir = output_dir / "summary"
 
     if not detail_dir.exists():
-        logger.error(f"详细结果目录不存在: {detail_dir}")
+        logger.error(f"Detailed results directory does not exist: {detail_dir}")
         return
 
     summary_dir.mkdir(exist_ok=True, parents=True)
 
-    # 收集所有模型目录和结果文件
+    # Collect all model directories and result files
     all_results = []
     model_stats = {}
 
@@ -823,142 +774,139 @@ def generate_summary_only(output_dir):
         if model_dir.is_dir():
             model_name = model_dir.name
 
-            # 读取模型统计信息
+            # Read model statistics
             stats_file = model_dir / "model_stats.json"
             if stats_file.exists():
                 with open(stats_file, "r", encoding="utf-8") as f:
                     model_stats[model_name] = json.load(f)
 
-            # 读取结果文件
+            # Read result files
             result_file = model_dir / f"{model_name}_results.jsonl"
 
             if not result_file.exists():
                 if result_file.with_suffix(".csv").exists():
-                    # 兼容旧的CSV结果文件，将其转换为JSONL格式，并把老文件备份
+                    # Compatible with old CSV result files: convert them to JSONL format and back up the old file
                     old_result_file = result_file.with_suffix(".csv")
                     df = read_result_file(old_result_file)
                     df.to_json(result_file, orient="records", lines=True)
                     backup_file = old_result_file.with_suffix(".csv.bak")
                     os.rename(old_result_file, backup_file)
-                    logger.info(f"转换旧的结果文件 {old_result_file} 为 {result_file}，并备份为 {backup_file}")
+                    logger.info(f"Converted old result file {old_result_file} to {result_file}, and backed it up as {backup_file}")
 
             if result_file.exists():
                 try:
                     df = read_result_file(result_file)
                     all_results.append(df)
-                    logger.info(f"读取结果文件: {result_file} ({len(df)} 条记录)")
+                    logger.info(f"Read result file: {result_file} ({len(df)} records)")
                 except Exception as e:
-                    logger.warning(f"读取结果文件失败 {result_file}: {e}")
+                    logger.warning(f"Failed to read result file {result_file}: {e}")
 
     if not all_results:
-        logger.warning("没有找到任何结果文件")
+        logger.warning("No result files found")
         return
 
-    # 合并所有结果
+    # Combine all results
     combined_df = pd.concat(all_results, ignore_index=True)
-    logger.info(f"合并了 {len(all_results)} 个结果文件，总共 {len(combined_df)} 个实验结果")
+    logger.info(f"Combined {len(all_results)} result files, totaling {len(combined_df)} experimental results")
 
-    # 去重
+    # Deduplicate
     before = len(combined_df)
     combined_df = combined_df.drop_duplicates()
     after = len(combined_df)
-    logger.info(f"去重完成：删除了 {before - after} 条重复记录，剩余 {after} 条记录")
+    logger.info(f"Deduplication complete: removed {before - after} duplicate records, {after} records remaining")
 
-    #清洗NATtype数据
+    # Clean invalid numeric data
     target_object_cols = [
         'fit_time', 'inference_time']
     for col in target_object_cols:
         if col in combined_df.columns:
             combined_df[col] = pd.to_numeric(combined_df[col], errors="coerce")
 
-    # 生成汇总统计
+    # Generate summary statistics
     summary_file = summary_dir / "summary.xlsx"
 
-    # 使用通用汇总函数
+    # Use the general summary function
     generate_summary_statistics(combined_df, model_stats, summary_file)
 
-    # 打印简要统计
+    # Print brief statistics
     print_summary_statistics(combined_df)
-
-
 class GPUManager:
-    """GPU资源管理器"""
+    """GPU Resource Manager"""
 
     def __init__(self, gpu_list=None, n_jobs=1):
         """
-        初始化GPU管理器
+        Initialize GPU Manager
 
         Args:
-            gpu_list: 指定使用的GPU列表，如[0,1,2]，None表示自动检测
-            n_jobs: 总并发任务数
+            gpu_list: Specify the list of GPUs to use, e.g., [0,1,2]. None means auto-detection
+            n_jobs: Total number of concurrent tasks
         """
         self.available_gpus = self._detect_gpus(gpu_list)
         self.n_jobs = n_jobs
         self.num_gpus = len(self.available_gpus)
 
         if self.num_gpus == 0:
-            logger.warning("未检测到可用GPU，将使用CPU模式")
+            logger.warning("No available GPUs detected, will use CPU mode")
         else:
-            logger.info(f"检测到 {self.num_gpus} 个可用GPU: {self.available_gpus}")
-            logger.info(f"并发任务数: {n_jobs}, 每个GPU最多同时运行: {math.ceil(n_jobs / self.num_gpus)} 个任务")
+            logger.info(f"Detected {self.num_gpus} available GPUs: {self.available_gpus}")
+            logger.info(f"Number of concurrent tasks: {n_jobs}, maximum concurrent tasks per GPU: {math.ceil(n_jobs / self.num_gpus)}")
 
     def _detect_gpus(self, gpu_list):
-        """检测可用GPU"""
+        """Detect available GPUs"""
         if gpu_list is not None:
-            # 用户指定GPU列表
+            # User-specified GPU list
             if isinstance(gpu_list, str):
-                # 支持 "0,1,2" 格式
+                # Support "0,1,2" format
                 return [int(x.strip()) for x in gpu_list.split(",")]
             elif isinstance(gpu_list, list):
                 return gpu_list
             else:
                 return [gpu_list]
         else:
-            # 自动检测所有可用GPU
+            # Auto-detect all available GPUs
             if torch.cuda.is_available():
                 return list(range(torch.cuda.device_count()))
             else:
                 return []
 
     def get_gpu_for_task(self, task_index):
-        """获取任务应该使用的GPU ID"""
+        """Get the GPU ID that should be assigned to the task"""
         if self.num_gpus == 0:
             return None
         return self.available_gpus[task_index % self.num_gpus]
 
     def get_gpu_assignment_summary(self):
-        """获取GPU分配摘要"""
+        """Get a summary of the GPU assignments"""
         if self.num_gpus == 0:
-            return "CPU模式"
+            return "CPU Mode"
 
         tasks_per_gpu = {}
         for i in range(self.n_jobs):
             gpu_id = self.get_gpu_for_task(i)
             tasks_per_gpu[gpu_id] = tasks_per_gpu.get(gpu_id, 0) + 1
 
-        return f"GPU分配: {dict(sorted(tasks_per_gpu.items()))}"
-    
-#为适配cleanlab添加包装类
+        return f"GPU Assignment: {dict(sorted(tasks_per_gpu.items()))}"
+
+# Wrapper class added to adapt for cleanlab
 class CleanlabWSADWrapper:
     def __init__(self, model):
         self.model = model
 
     def fit(self, X, y):
-        # 你自己的训练逻辑
+        # Your custom training logic
         self.model.train_loop(X, y)
         return self
 
     def predict_proba(self, X):
-        logits = self.model.predict_score(X)   # 或 model.forward
+        logits = self.model.predict_score(X)  # or model.forward
         probs = torch.softmax(logits, dim=-1)
         return probs.detach().cpu().numpy()
 
     def predict(self, X):
         return self.predict_proba(X).argmax(axis=1)
-
 def run_single_experiment_with_gpu(params_with_config):
     """
-    带GPU分配的实验执行函数
+    Experiment execution function with GPU assignment
     """
     params, gpu_id, experiment_config, DEBUG = params_with_config
     model_name, dataset_name, rla, eln, ru, flip_normal_ratio, flip_abnormal_ratio, target_for_unlabeled, seed, is_cleanlab, exp_note = params
@@ -968,28 +916,28 @@ def run_single_experiment_with_gpu(params_with_config):
     else:
         noise_type = None
 
-    # 设置GPU环境
+    # Set GPU environment
     if gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         logger.info(
-            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) 分配到 GPU {gpu_id}")
+            f"Task {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) assigned to GPU {gpu_id}")
     else:
-        # CPU模式
+        # CPU mode
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         logger.info(
-            f"任务 {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) 使用 CPU 模式")
+            f"Task {model_name}-{dataset_name}(seed={seed}, rla={rla},eln={eln},ru={ru},noise_type={noise_type},exp_note={exp_note}) using CPU mode")
 
     try:
-        # 从配置中获取所需的组件
+        # Retrieve required components from the configuration
         data_type = experiment_config["data_type"]
         model_params = experiment_config["model_params"]
         utils = Utils()
 
-        # 创建数据生成器
+        # Create data generator
         data_generator = DataGenerator(generate_duplicates=True, n_samples_threshold=1000)
         data_generator.seed = seed
         data_generator.dataset = dataset_name
-        # 生成数据
+        # Generate data
         data = data_generator.generator(
             la=rla,
             eln=eln,
@@ -1001,32 +949,37 @@ def run_single_experiment_with_gpu(params_with_config):
             at_least_one_labeled=True,
             shortage_mode="ignore",
             data_type=data_type,
-            exp_note = exp_note
+            exp_note=exp_note
         )
 
-        # 检查数据有效性
-        # if len(data["y_train"]) == 0 or np.sum(data["y_train"]) == 0:
+        # Check data validity
         if len(data["y_train"]) == 0:
-            logger.warning(f"数据集 {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabbeled={target_for_unlabeled},noise_type={noise_type},exp_note = {exp_note}) 没有标注异常，跳过")
+            logger.warning(
+                f"Dataset {dataset_name} (model={model_name}, seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}) has no labeled anomalies, skipping")
             return None
 
-        # 创建模型
+        # Create model
         feature_shape = data["X_train"].shape
         model = ExperimentRunner.create_model(model_params, model_name, seed=seed, feature_shape=feature_shape)
 
-        # 根据数据类型处理数据
+        # Process data based on data type
         data_shape = None
         if data_type == "video":
             data, data_shape = ExperimentRunner._process_video_data(data)
         elif "inexact" in data_type:
             data, data_shape = ExperimentRunner._process_tabular_data(data)  # -> tabular_inexact
 
-        # 训练时间
+        # Training start time
         start_time = time.time()
 
         def has_param(func, param_name):
-            """检查函数是否有指定参数"""
+            """Check if a function has a specific parameter"""
             return param_name in inspect.signature(func).parameters
+
+        # Determine whether to trigger the transformation of X_train and y_train
+        if data_type == "video" and model_name not in ["ARNet", "MGFN", "RTFM", "Sultani", "VadClip", "URDMU",
+                                                       "ZhongGCNAD"]:
+            data = video_data2tabular_data(data, data_shape, model_name, seed)
 
         train_input = {}
         if has_param(model.fit, "X"):
@@ -1050,9 +1003,10 @@ def run_single_experiment_with_gpu(params_with_config):
         if has_param(model.fit, "vid_source_clips_num"):
             train_input["vid_source_clips_num"] = data.get("vid_source_clips_num_train", None)
 
-        
-        if "inexact" in data_type:
-            if has_param(model.fit, "X_test"):
+        if has_param(model.fit, "X_test"):  # X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames
+
+            if "inexact" in data_type or 'video' in data_type:
+
                 train_input["X_test"] = [
                     data["X_test"],
                     data_shape,
@@ -1061,22 +1015,21 @@ def run_single_experiment_with_gpu(params_with_config):
                     data["y_test_gt_idx"],
                     data["NUM_FRAMES"],
                 ]
-        if has_param(model.fit,"X_test"):
-            train_input["X_test"] = [
-                data["X_test"],
-                data["y_test"]
-            ]
-                
+            else:
+                train_input["X_test"] = [
+                    data["X_test"],
+                    data["y_test"]
+                ]
+
         if has_param(model.fit, "X_test_extra"):  # vid_kind, vid_source_clips_num,crops_num
             train_input["X_test_extra"] = [
                 data.get("vid_kind_test", None),
                 data.get("vid_source_clips_num_test", None),
                 data_shape[1] if data_shape else None,
             ]
-        # 可视化
+        # visualization
         if has_param(model.fit, "emb_vis"):
             train_input["emb_vis"] = data.get("emb_vis", None)
-
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -1086,7 +1039,7 @@ def run_single_experiment_with_gpu(params_with_config):
         elif hasattr(model, "predict_proba"):
             pred_func = model.predict_proba
         else:
-            raise AttributeError(f"模型 {model_name} 没有可用的评分方法")
+            raise AttributeError(f"Model {model_name} has no available scoring method")
 
         test_input = {}
         if has_param(pred_func, "X_train"):
@@ -1107,54 +1060,53 @@ def run_single_experiment_with_gpu(params_with_config):
             test_input["vid_source_clips_num"] = data.get("vid_source_clips_num_test", None)
 
         if is_cleanlab == "true":
-            print("启用 CleanLearning 进行数据清洗...")
+            print("Enabling CleanLearning for data cleaning...")
             if "X_train" in train_input:
                 X, y = train_input["X_train"], train_input["y_train"]
             else:
                 X, y = train_input["X"], train_input["y"]
 
-            clf = RandomForestClassifier()                       #使用随机森林模型作为清洗模型
-            cl = CleanLearning(clf,cv_n_folds=5,seed=seed)
+            clf = RandomForestClassifier()  # Use Random Forest as the cleaning model
+            cl = CleanLearning(clf, cv_n_folds=5, seed=seed)
             cl.fit(X, y)
-            # 获取清洗后的标签索引
+            # Get the label indices after cleaning
             label_issues = cl.find_label_issues(X, y)
             issues = np.array(label_issues['is_label_issue'])
             label_quality = np.array(label_issues["label_quality"])
-            # 1) 找出所有噪声样本索引
-            noise_idx = np.where(issues)[0]   # is_label_issue == True 的样本
 
-            # 如果没有噪声样本，直接返回空
+            # 1) Find all noisy sample indices
+            noise_idx = np.where(issues)[0]  # Samples where is_label_issue == True
+
+            # If there are no noisy samples, return empty directly
             if len(noise_idx) == 0:
                 low_quality_noise_idx = np.array([], dtype=int)
             else:
-                # 2) 取这些样本的 label_quality
+                # 2) Get the label_quality of these samples
                 noise_label_quality = label_quality[noise_idx]
 
-                # 3) 噪声样本中选 label_quality 最低的 30%
+                # 3) Select the lowest 30% label_quality among noisy samples
                 k = int(len(noise_idx) * 0.30)
-                k = max(k, 1)   # 避免 k = 0
+                k = max(k, 1)  # Avoid k = 0
 
-                # 4) 找出噪声样本内部排序的索引
+                # 4) Find the indices of the internally sorted noisy samples
                 local_sorted_idx = np.argsort(noise_label_quality)[:k]
 
-                # 5) 映射回原始样本索引
+                # 5) Map back to the original sample indices
                 low_quality_noise_idx = noise_idx[local_sorted_idx]
-                        
-            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]   # 修正噪声样本标签
 
-            logger.info(f"CleanLearning 检测到并修正了 {len(low_quality_noise_idx)} 个高置信度低质噪声标签样本")
+            y[low_quality_noise_idx] = 1 - y[low_quality_noise_idx]  # Correct the noisy sample labels
 
-            if 'X' in train_input:    #更新训练数据
-                train_input["X"],train_input["y"] = X,y
+            logger.info(
+                f"CleanLearning detected and corrected {len(low_quality_noise_idx)} high-confidence low-quality noisy label samples")
+
+            if 'X' in train_input:  # Update training data
+                train_input["X"], train_input["y"] = X, y
             else:
-                train_input["X_train"],train_input["y_train"] = X,y
+                train_input["X_train"], train_input["y_train"] = X, y
 
-        
         model.fit(**train_input)
 
         fit_time = time.time() - start_time
-
-        # 推理时间
         start_time = time.time()
         proba = pred_func(**test_input)
         if proba.ndim == 1:
@@ -1163,15 +1115,13 @@ def run_single_experiment_with_gpu(params_with_config):
             scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
 
         inference_time = time.time() - start_time
-
-        # 根据数据类型处理分数和计算指标
         if data_type == "video":
             frame_scores, frame_truth = ExperimentRunner._process_video_scores(scores, data_shape, data)
             metrics = utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
-        elif "inexact" in data_type:  # tabular_inexact
+        elif "inexact" in data_type:
             sample_scores, sample_truth = ExperimentRunner._process_tabular_scores(scores, data_shape, data)
             metrics = utils.metric(y_true=sample_truth, y_score=sample_scores, pos_label=1)
-        else:  # tabular
+        else:
             metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
 
         result = {
@@ -1187,7 +1137,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": metrics["aucroc"],
             "aucpr": metrics["aucpr"],
             "noise_type": noise_type,
-            "is_cleanlab":is_cleanlab,
+            "is_cleanlab": is_cleanlab,
             "fit_time": fit_time,
             "inference_time": inference_time,
             "n_train": len(data["y_train"]),
@@ -1200,11 +1150,10 @@ def run_single_experiment_with_gpu(params_with_config):
         }
 
         logger.info(
-            f"完成 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}): "
+            f"finish {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}): "
             f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
         )
 
-        # 清理内存
         del model, data, scores
         gc.collect()
 
@@ -1214,7 +1163,7 @@ def run_single_experiment_with_gpu(params_with_config):
         if DEBUG:
             raise e
         logger.error(
-            f"实验失败 {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): {str(e)}")
+            f"fail {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): {str(e)}")
         return {
             "model": model_name,
             "dataset": dataset_name,
@@ -1228,7 +1177,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "aucroc": np.nan,
             "aucpr": np.nan,
             "noise_type": noise_type,
-            "is_cleanlab":is_cleanlab,
+            "is_cleanlab": is_cleanlab,
             "fit_time": np.nan,
             "inference_time": np.nan,
             "n_train": np.nan,
@@ -1242,20 +1191,18 @@ def run_single_experiment_with_gpu(params_with_config):
 
 
 def main():
-    """解开线程限制"""
-    # 解开限制
+    """Unlock file descriptor limits"""
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    print(f"原始限制: soft={soft}, hard={hard}")
-    # 设置为 2048（注意不能超过 hard limit，否则会报错）
+    print(f"Original limits: soft={soft}, hard={hard}")
+    # Set to 4096 (Note: cannot exceed hard limit, otherwise an error will occur)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, hard))
-    # 验证修改结果
+    # Verify modification results
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    print(f"修改后: soft={soft}, hard={hard}")
+    print(f"Modified limits: soft={soft}, hard={hard}")
 
-    """主函数"""
-    parser = argparse.ArgumentParser(description="统一的异常检测实验运行器")
+    parser = argparse.ArgumentParser(description="Unified anomaly detection experiment runner")
 
-    # 必需参数
+
     parser.add_argument(
         "--data_type",
         choices=[
@@ -1267,43 +1214,44 @@ def main():
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
-            "tabular_CV_by_ResNet18_OOD_pic",
-            "CV_by_ViT_bags_inexact"
         ],
         required=True,
         default=["tabular_classical"],
-        help="数据类型：video 或 tabular",
+        help="type of data",
     )
 
-    parser.add_argument("--models", nargs="+", help="要运行的模型名称列表")
+    parser.add_argument("--models", nargs="+", help="List of model names to run")
 
-    # 可选参数
-    parser.add_argument("--n_jobs", type=int, default=1, help="并行作业数量，-1表示使用所有CPU核心 (默认: 1)")
+    # Optional parameters
+    parser.add_argument("--n_jobs", type=int, default=1,
+                        help="Number of parallel jobs, -1 means using all CPU cores (Default: 1)")
 
-    parser.add_argument("--output_dir", type=str, help="输出目录 (默认: results/{data_type})")
+    parser.add_argument("--output_dir", type=str, help="Output directory (Default: results/{data_type})")
 
     parser.add_argument(
         "--parameter_config_path",
         type=str,
-        help="模型参数配置文件目录 (默认: WSADBench/model_configs/{data_type})",  # video / tabular
+        help="Directory path for model parameter configuration files (Default: WSADBench/model_configs/{data_type})",
+        # video / tabular
     )
 
-    parser.add_argument("--datasets", nargs="+", default=None, help="指定运行的数据集名称，默认运行所有数据集")
+    parser.add_argument("--datasets", nargs="+", default=None,
+                        help="Specify the names of the datasets to run; defaults to running all datasets")
 
     parser.add_argument(
         "--rla_list",
         nargs="+",
         type=int_or_float,
         default=[1.0],
-        help="标注异常比例列表 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+        help="List of ratios for labeled anomalies (Default: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
     parser.add_argument(
         "--eln_list",
         nargs="+",
         type=int_or_float,
-        default=[0.0],  # 0.0表示abnormal only ; 1.0表示abnormal与normal数量相等
-        help="标注正常比例列表，这是标注异常数量的相对比例 (默认: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
+        default=[0.0],  # 0.0 means abnormal only; 1.0 means equal number of abnormal and normal samples
+        help="List of ratios for expected labeled normal samples, relative to the number of labeled anomalies (Default: 0.01 0.05 0.1 0.25 0.5 0.75 1.0)",
     )
 
     parser.add_argument(
@@ -1311,7 +1259,7 @@ def main():
         nargs="+",
         type=int_or_float,
         default=[1.0],
-        help="无标签样本比例列表 (默认: 1.0)",
+        help="List of ratios for unlabeled samples (Default: 1.0)",
     )
 
     parser.add_argument(
@@ -1319,7 +1267,7 @@ def main():
         nargs="+",
         type=int_or_float,
         default=[0.0],
-        help="正常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
+        help="List of error labeling ratios for normal samples / false positive rate (Default: 0.01 0.05 0.1 0.25 0.5)",
     )
 
     parser.add_argument(
@@ -1327,7 +1275,7 @@ def main():
         nargs="+",
         type=int_or_float,
         default=[0.0],
-        help="异常样本错误标注比例列表 (默认: 0.01 0.05 0.1 0.25 0.5)",
+        help="List of error labeling ratios for abnormal samples / false negative rate (Default: 0.01 0.05 0.1 0.25 0.5)",
     )
 
     parser.add_argument(
@@ -1336,7 +1284,7 @@ def main():
         type=str,
         choices=["fill_unlabel_0", "keep_label", "delete_sample"],
         default=["fill_unlabel_0"],
-        help="未标注数据的目标处理方式 (默认: fill_unlabel_0, 可选: fill_unlabel_0, keep_label,delete_sample...待补充)",
+        help="Target handling method for unlabeled data (Default: fill_unlabel_0, Options: fill_unlabel_0, keep_label, delete_sample... to be supplemented)",
     )
 
     parser.add_argument(
@@ -1345,38 +1293,37 @@ def main():
         type=str,
         choices=[None, "label_contamination"],
         default=[None],
-        help="噪声类型 (默认: None, 可选: label_contamination ...待补充)",
+        help="Noise type (Default: None, Options: label_contamination... to be supplemented)",
     )
 
     parser.add_argument(
         "--is_cleanlab",
-        nargs="+" ,
+        nargs="+",
         type=str,
         choices=["true", "false"],
         default=["false"],
-        help="这是是否启用清洗数据的开关参数" \
-        "默认：不开启，和之前的实验条件一致",
+        help="Switch parameter to enable data cleaning. " \
+             "Default: false, consistent with previous experimental conditions.",
     )
 
     parser.add_argument(
         "--seed_list",
         nargs="+",
         type=int,
-        default=list(range(1, 11)),
-        help="随机种子列表 (默认: 1 2 3 4 5 6 7 8 9 10)",
+        default=list(range(0, 5)),
+        help="Random seed list (Default: 0 1 2 3 4)",
     )
 
     parser.add_argument(
         "--dry_summary",
         action="store_true",
-        help="仅进行汇总，不运行实验",
+        help="Only perform summarization, do not run experiments",
     )
-
     parser.add_argument(
         "--gpus",
         type=str,
-        default=None,
-        help="指定使用的GPU，格式：0,1,2 或 auto（自动检测所有GPU），默认：auto",
+        default='auto',
+        help="Specify GPUs (format: 0,1,2 or auto for auto-detect all GPUs; default: auto)",
     )
 
     parser.add_argument(
@@ -1384,61 +1331,45 @@ def main():
         nargs="+",
         type=str,
         default=['None'],
-        help="实验备注，用于区分不同实验",
+        help="Experiment notes: used to distinguish different experiments.",
     )
 
     parser.add_argument(
         "--DEBUG",
         action="store_true",
-        help="开启调试模式，捕获所有异常并打印详细错误信息",
+        help="Enable debug mode to catch all exceptions and print detailed error information.",
     )
 
     parser.add_argument(
         "--NO_RESUME",
         action="store_true",
-        help="如果设置了此选项，则不会跳过已完成的实验，强制重新运行所有实验",
+        help="If this option is set, completed experiments will not be skipped, and all experiments will be forcibly re-run.",
     )
 
     args = parser.parse_args()
 
-    # 如果只是要汇总
+    # If you only need to summarize
     if args.dry_summary:
-        logger.info("仅进行汇总操作...")
+        logger.info("Only perform summary operations...")
         output_dir = args.output_dir if args.output_dir else f"results/{args.data_type}"
         generate_summary_only(output_dir)
         return
 
-    # 如果不是dry_summary模式，则检查必需的参数
+    # If it is not in dry_summary mode, check the required parameters.
     if not args.models:
         parser.error("--models is required when not using --dry_summary. Please specify at least one model.")
 
-    # # 预处理RLA列表
-    # _rla_list = []
-    # for rla in args.rla_list:
-    #     if rla > 1:
-    #         _rla_list.append(int(rla))
-    #     else:
-    #         _rla_list.append(rla)
-    # args.rla_list = _rla_list
-
-    # #预处理ELN列表
-    # _eln_list = []
-    # for eln in args.eln_list:
-    #     if eln > 1:
-    #         _eln_list.append(int(eln))
-    #     else:
-    #         _eln_list.append(eln)
-    # args.eln_list = _eln_list
-
-    # 处理GPU参数
+    # gpu param
     gpu_list = None
     if args.gpus is not None:
         if args.gpus.lower() == "auto":
-            gpu_list = None  # 自动检测
+            gpu_list = None  # auto detect
         else:
-            gpu_list = args.gpus  # 用户指定
-
-    # 创建运行器
+            gpu_list = args.gpus.strip()
+            if not re.match(r'^[\d,]+$', gpu_list):
+                raise ValueError(f"wrong GPU index: {gpu_list}, format should be like '2' or '0,1'")
+            os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+    # new Experiment
     runner = ExperimentRunner(
         models=args.models,
         data_type=args.data_type,
@@ -1458,58 +1389,17 @@ def main():
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
         NO_RESUME=args.NO_RESUME,
-        exp_note = args.exp_note
+        exp_note=args.exp_note
     )
 
-    # 运行实验
-    logger.info(f"开始运行{args.data_type}实验，模型: {args.models}")
+    logger.info(f"start running {args.data_type} experiment, model: {args.models}")
     start_time = time.time()
 
     results = runner.run_experiments()
 
     total_time = time.time() - start_time
-    logger.info(f"所有实验完成，总耗时: {total_time:.2f}秒")
+    logger.info(f"All experiments completed, with the total time consumed: {total_time:.2f}s")
 
 
 if __name__ == "__main__":
     main()
-
-"""
-使用示例:
-
-# 运行video实验，自动检测GPU
-python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus auto
-
-# 运行tabular实验，指定使用GPU 0,1
-python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs 8 --gpus 0,1
-
-# 使用所有GPU，高并发任务
-python run_experiment.py --data_type video --models Sultani --n_jobs 16 --gpus auto
-
-# 仅使用特定GPU
-python run_experiment.py --data_type video --models RoSAS --n_jobs 4 --gpus 0,2
-
-# CPU模式（不使用GPU）
-python run_experiment.py --data_type tabular --models RoSAS --n_jobs 4
-
-# 指定特定数据集和RLA
-python run_experiment.py --data_type video --models RoSAS --datasets cardio thyroid --rla_list 0.1 0.5 1.0 --gpus auto
-
-# 指定随机种子
-python run_experiment.py --data_type tabular --models RoSAS --seed_list 1 2 3 4 5 --gpus 0,1
-
-# 使用自定义配置目录
-python run_experiment.py --data_type video --models RoSAS --parameter_config_path ./my_configs --gpus auto
-
-# 并行运行，使用所有CPU核心和GPU
-python run_experiment.py --data_type tabular --models RoSAS AABiGAN --n_jobs -1 --gpus auto
-
-# 仅进行汇总（从已有的detail目录生成summary）
-python run_experiment.py --data_type video --dry_summary
-
-# GPU超分：8个任务使用2个GPU（每个GPU运行4个任务）
-python run_experiment.py --data_type video --models Sultani --n_jobs 8 --gpus 0,1
-
-# 快速测试
-python run_experiment.py --data_type video --models AABiGAN --datasets 10_cover --seed_list 1 --rla_list 0.1 --n_jobs 1 --gpus 0
-"""

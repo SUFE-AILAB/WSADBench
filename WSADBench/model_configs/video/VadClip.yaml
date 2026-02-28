@@ -14,6 +14,6 @@ parameters:
   scheduler_milestones: [4, 8]  # 40% 80%
   scheduler_gamma: 0.1
   visual_length: 256
-  pt_path: '/data/coding/wsad/zsy/WSADBench/WSADBench/baseline/VadCLIP_v1/data/pt/ViT-B-16.pt'
+  pt_path: 'WSADBench/baseline/VadCLIP_v1/data/pt/ViT-B-16.pt'
   lam: 0.1  # ucf: 0.1  xd: 0.0001
   is_test: false

@@ -17,7 +17,8 @@ from WSADBench.myutils import Utils
 from WSADBench.baseline.Sultani.model import SultaniLearner
 # from WSADBench.baseline.Sultani.fit import fit_sultani_main
 from WSADBench.baseline.Sultani.fit import fit_sultani as fit_main
-from common_utils.baseline_utils import fit_utils
+from common_utils.baseline_utils import fit_utils, fit_utils_mil
+
 
 class Sultani:
     """
@@ -47,6 +48,7 @@ class Sultani:
         scheduler_milestones: List[int] = None,
         verbose: bool = True,
         is_test: bool = False,
+            **kwargs  # 接受多余参数
     ):
         """
         初始化Sultani模型
@@ -112,11 +114,6 @@ class Sultani:
             if self.use_scheduler:
                 self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
 
-            if self.verbose:
-                print(f"Sultani模型初始化完成")
-                print(f"设备: {self.device}")
-                print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
-
     def fit(self, X, y, X_test=None, y_test=None,vid_source_clips_num=None, crops_num=None):
         """
         训练Sultani模型
@@ -134,10 +131,10 @@ class Sultani:
 
         if self.verbose:
             print("=" * 60)
-            print("开始训练Sultani模型")
+            print("start training Sultani")
             print("=" * 60)
-            print(f"训练样本数: {len(X)}")
-            print(f"正常样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
+            print(f"train sample: {len(X)}")
+            print(f"normal sample: {np.sum(y == 0)}, abnormal sample: {np.sum(y == 1)}")
 
         # 数据预处理
         X = self._preprocess_data(X)
@@ -145,18 +142,36 @@ class Sultani:
         # 初始化模型
         self._init_model()
         # 训练模型
-        fit_dict = fit_utils(trainer=self,
-                             X_test=X_test,
-                             # y_test=y_test,
-                             X_train=X,
-                             y_train=y,
-                             model=self.model,
-                             optimizer=self.optimizer,
-                             epochs=self.epochs,
-                             batch_size=self.batch_size,
-                             device=self.device,
-                             verbose=self.verbose,
-                             clip_num=vid_source_clips_num, crops_num=crops_num)
+        if vid_source_clips_num is not None:  # 是video 数据 classical_bags_inexact
+            fit_dict = fit_utils(trainer=self,
+                                 X_test=X_test,
+                                 # y_test=y_test,
+                                 X_train=X,
+                                 y_train=y,
+                                 model=self.model,
+                                 optimizer=self.optimizer,
+                                 epochs=self.epochs,
+                                 batch_size=self.batch_size,
+                                 device=self.device,
+                                 verbose=self.verbose,
+                                 clip_num=vid_source_clips_num, crops_num=crops_num)
+
+        else:
+            fit_dict = fit_utils_mil(trainer=self,
+                                     X_test=X_test,
+                                     # y_test=y_test,
+                                     X_train=X,
+                                     y_train=y,
+                                     model=self.model,
+                                     optimizer=self.optimizer,
+                                     epochs=self.epochs,
+                                     batch_size=self.batch_size,
+                                     device=self.device,
+                                     verbose=self.verbose,
+                                     exp_note="tabular_inexact",
+                                     seg=32,
+                                     clip_num=vid_source_clips_num, crops_num=crops_num)
+
         self.training_history = fit_main(fit_dict['model'], fit_dict['optimizer'], fit_dict['epochs'],
                                          fit_dict['device'], fit_dict['X_test'], fit_dict['trainer'],
                                          fit_dict['verbose'], fit_dict['normal_loader'], fit_dict['anomaly_loader'])
@@ -166,7 +181,7 @@ class Sultani:
         training_time = time.time() - start_time
 
         if self.verbose:
-            print(f"训练完成，耗时: {training_time:.2f}秒")
+            print(f"train cost: {training_time:.2f}s")
 
             # 如果有测试数据，计算测试性能
             if X_test is not None and y_test is not None:
@@ -174,7 +189,7 @@ class Sultani:
                 if len(np.unique(y_test)) > 1:
                     test_auc = roc_auc_score(y_test, test_scores)
                     test_ap = average_precision_score(y_test, test_scores)
-                    print(f"测试集 AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
+                    print(f"test set AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
 
         return self
 

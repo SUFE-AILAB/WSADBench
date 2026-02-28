@@ -4,11 +4,12 @@ import numpy as np
 from tqdm import tqdm
 from WSADBench.datasets.dataset_support.video_pre_segment import segment_average
 
+
 def segment_average(arr, num_segments):
     segs = np.linspace(0, len(arr), num_segments + 1, dtype=int)
     return np.stack(
         [
-            np.mean(arr[segs[i] : segs[i + 1]], axis=0) if segs[i] != segs[i + 1] else arr[segs[i]]
+            np.mean(arr[segs[i]: segs[i + 1]], axis=0) if segs[i] != segs[i + 1] else arr[segs[i]]
             for i in range(num_segments)
         ],
         axis=0,
@@ -16,7 +17,8 @@ def segment_average(arr, num_segments):
 
 
 def get_pretrain_model_path(path, pretrain_model):
-    param_dict = {'i3d': 'CV_by_I3D', 'mvit': 'CV_by_MViT_32', 'sf': 'CV_by_SlowFast'}
+    param_dict = {'i3d': 'CV_by_I3D', 'mvit': 'CV_by_MViT_32', 'sf': 'CV_by_SlowFast', 'x3d': 'CV_by_X3DM',
+                  'sf50': 'CV_by_SlowFast_R50'}
 
     if pretrain_model not in param_dict:
         raise ValueError(f"Pretrain model {pretrain_model} not found in {param_dict}")
@@ -30,6 +32,7 @@ def get_pretrain_model_path(path, pretrain_model):
         return Path('/'.join(parts))
     else:
         raise ValueError(f"Path {path} doesn't have enough parts to replace model directory")
+
 
 class UCFCrimeManager:
     def __init__(self, ds_config):
@@ -59,7 +62,8 @@ class UCFCrimeManager:
         if num_segments is not None:
             load_dir = self.segmentation_dir / str(num_segments)
             if not self.segmentation_dir.exists():
-                raise FileNotFoundError(f"Segmented dir {load_dir} does not exist. You may need to run video_pre_segment.py first.")
+                raise FileNotFoundError(
+                    f"Segmented dir {load_dir} does not exist. You may need to run video_pre_segment.py first.")
         else:
             load_dir = self.processed_dir
 
@@ -82,6 +86,7 @@ class UCFCrimeManager:
                 idx += n
 
             return result
+
         def load_train_split(files):
             arrs, ys, vid_ids = [], [], []
             vid_kind = {}  # 视频标签种类字典
@@ -128,7 +133,6 @@ class UCFCrimeManager:
 
                 arr = np.load(file_path, mmap_mode="r")
                 idx = np.full(len(arr), i, dtype=np.int32)
-                
 
                 label = 0 if 'Normal' in kind else 1
                 y = np.full(len(arr), label, dtype=np.int32)
@@ -189,7 +193,7 @@ class UCFCrimeManager:
             for i in range(3, len(row), 2):
                 start_frame = int(row[i])
                 end_frame = int(row[i + 1])
-                truth[start_frame : end_frame + 1] = 1
+                truth[start_frame: end_frame + 1] = 1
             groud_truth[file_name] = {
                 "file_path": file_path,
                 "all_frames": all_frames,
@@ -204,7 +208,9 @@ class ShanghaitechManager:
     def __init__(self, ds_config):
         self.ds_config = ds_config
         self.wd = Path(ds_config["working_dir"])
-        self.data_dir = self.wd / ds_config["DATA_DIR"] if 'pretrain_model' not in ds_config else get_pretrain_model_path(self.wd / ds_config["DATA_DIR"], ds_config["pretrain_model"])
+        self.data_dir = self.wd / ds_config[
+            "DATA_DIR"] if 'pretrain_model' not in ds_config else get_pretrain_model_path(
+            self.wd / ds_config["DATA_DIR"], ds_config["pretrain_model"])
         self.processed_dir = self.data_dir / ds_config["MODALITY_DIR"]
         self.segmentation_dir = self.data_dir / ds_config["SEGMENTATION_DIR"] / ds_config["MODALITY_DIR"]
         # self.frame_labels_dir = self.data_dir / ds_config["FRAME_LABELS_DIR"]
@@ -283,8 +289,6 @@ class ShanghaitechManager:
 
         return groud_truth
 
-
-
     def load_data(self, limit=None, num_segments=None):
         """加载Shanghai数据集数据"""
         if num_segments is not None:
@@ -326,7 +330,7 @@ class ShanghaitechManager:
 
                 # 构建完整的文件路径
                 file_path = load_dir
-                for part in file_parts: # 用 / 拼接路径是 pathlib 的语法糖，等价于 file_path.joinpath(part)。
+                for part in file_parts:  # 用 / 拼接路径是 pathlib 的语法糖，等价于 file_path.joinpath(part)。
                     file_path = file_path / part
                 file_path = file_path.with_suffix('.avi.npy')  # 即使原路径有别的后缀（比如 .txt），它也会被替换成 .npy。
 
@@ -521,8 +525,7 @@ class XDViolenceManager:
 
         annotation_file = self.data_dir / self.ds_config["LABEL_LIST"]
         if not annotation_file.exists():
-            print(f"Annotation file {annotation_file} not found, generating default annotations")
-            return self._generate_default_ground_truth()
+            raise ValueError(f"Annotation file {annotation_file} not found")
 
         with open(annotation_file, "r") as f:
             ground_truth_list = [line.strip().split() for line in f.readlines()]
@@ -643,7 +646,7 @@ class XDViolenceManager:
                 for part in file_parts:
                     file_path = file_path / part
                 old_path = file_path
-                file_path = Path(str(file_path).replace('.mp4', '')+'.mp4.npy')
+                file_path = Path(str(file_path).replace('.mp4', '') + '.mp4.npy')
                 # file_path = file_path.with_suffix('.mp4.npy')
 
                 if not file_path.exists():
@@ -671,7 +674,7 @@ class XDViolenceManager:
                 else:
                     match = re.search(r'label_([^-]+)', str(file_path))
                     if match:
-                        vid_kind[video_idx] = match.group(1).replace('.mp4.npy','')
+                        vid_kind[video_idx] = match.group(1).replace('.mp4.npy', '')
                     else:
                         # 如果没有匹配到，可以设置默认值或者报错
                         raise ValueError(f"Could not extract label from file path: {file_path}")
@@ -836,8 +839,7 @@ class TADManager:
 
         annotation_file = self.data_dir / self.ds_config["LABEL_LIST"]
         if not annotation_file.exists():
-            print(f"Annotation file {annotation_file} not found, generating default annotations")
-            return self._generate_default_ground_truth()
+            raise ValueError(f"Annotation file {annotation_file} not found")
 
         with open(annotation_file, "r") as f:
             lines = f.readlines()
@@ -1124,8 +1126,7 @@ class UCSD_Ped2Manager:
 
         annotation_file = self.data_dir / self.ds_config["LABEL_LIST"]
         if not annotation_file.exists():
-            print(f"Annotation file {annotation_file} not found, generating default annotations")
-            return self._generate_default_ground_truth()
+            raise ValueError(f"Annotation file {annotation_file} not found")
 
         with open(annotation_file, "r") as f:
             lines = f.readlines()
@@ -1353,6 +1354,8 @@ class UCSD_Ped2Manager:
 
         data['NUM_FRAMES'] = self.ds_config["NUM_FRAMES"]
         return data
+
+
 if __name__ == "__main__":
     ds_config = {
         "working_dir": "/data/coding/wsad/yx/WSADBench/",
@@ -1371,12 +1374,12 @@ if __name__ == "__main__":
     print(data.keys())
     print(data["X_train"].shape, data["y_train"].shape, data["vid_train"].shape)
     print(data["X_test"].shape, data["y_test"].shape, data["vid_test"].shape)
-    
+
     # 显示视频ID分布示例
     print("\n训练集视频ID分布示例:")
     print("vid_train前20个:", data["vid_train"][:20])
     print("训练集包含视频数量:", len(np.unique(data["vid_train"])))
-    
+
     print("\n测试集视频ID分布示例:")
     print("vid_test前20个:", data["vid_test"][:20])
     print("测试集包含视频数量:", len(np.unique(data["vid_test"])))

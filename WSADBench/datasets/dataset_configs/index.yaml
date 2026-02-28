@@ -13,6 +13,11 @@ NLP_by_BERT:
 NLP_by_RoBERTa:
   DATA_DIR: 'WSADBench/datasets/NLP_by_RoBERTa/'
   END_WITH: ".npz"
+
+CV_by_ResNet18_OOD:  # /data/coding/wsad/zsy/WSADBench/WSADBench/datasets/CV_OOD/cache/
+  DATA_DIR: 'WSADBench/datasets/CV_by_ResNet18_OOD/'
+  END_WITH: ".pkl"
+
 classical_bags_inexact:    # tabular -> video:inexact
   DATA_DIR: 'WSADBench/datasets/Classical_bags_inexact/'
   END_WITH: ".npz"

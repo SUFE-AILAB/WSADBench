@@ -10,7 +10,7 @@ class LimiX16M:
     def __init__(self,
                  device ='cuda:0',
                  input_dim = None,
-                 model_path = 'WSADBench/baseline/LimiX/model_path/LimiX-16M.ckpt',
+                 model_path = 'ckpt/LimiX-16M.ckpt',
                  mix_precision:bool=True,
                  inference_config: Optional[str]='WSADBench/baseline/LimiX/LimiXmain/config/cls_default_16M_retrieval.json',
                  categorical_features_indices: Optional[List[int]] = None,

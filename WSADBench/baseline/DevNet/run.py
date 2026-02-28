@@ -305,12 +305,17 @@ class DevNet:
             raise ValueError("Model has not been trained yet!")
 
         model_to_use.eval()
-        X_tensor = torch.FloatTensor(X).to(self.device)
-
+        X_tensor = torch.FloatTensor(X)
+        all_scores = []
+        batch_size = 1024 # 分批推理
         with torch.no_grad():
-            score = model_to_use(X_tensor)
+            for i in range(0,len(X_tensor),batch_size):
+                batch_X = X_tensor[i:i+batch_size]  # 切片允许越界，会截断
+                batch_X = batch_X.to(self.device)
+                batch_score = model_to_use(batch_X)
+                all_scores.append(batch_score.cpu().numpy())
 
-        score = score.cpu().numpy()
+        score = np.concatenate(all_scores, axis=0)
         return score
 
     def input_batch_generation_sup_sparse(self, X_train, outlier_indices, inlier_indices, batch_size, rng):

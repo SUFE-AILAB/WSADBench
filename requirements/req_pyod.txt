@@ -1,0 +1,13 @@
+pyod==2.0.6
+filelock
+torch
+pandas
+PyYAML>=6.0             # 解析 config 文件必须
+tqdm
+wget==3.2
+copulas
+cleanlab
+combo
+xgboost==2.1.4
+
+

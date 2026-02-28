@@ -1,8 +1,0 @@
-model_class: WSADBench.baseline.PyOD.PYOD
-
-# 模型参数
-parameters:
-  model_name: "XGBOD"
-  
-  # 是否启用超参数调优
-  tune: false

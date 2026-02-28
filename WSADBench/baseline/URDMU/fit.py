@@ -5,9 +5,9 @@ import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import time
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
-from common_utils.baseline_utils import get_gt
+from common_utils.baseline_utils import get_gt, write_jsonl
 
-logger = setup_logging(log_dir='/data/coding/wsad/zsy/WSADBench/WSADBench/datasets/logs', name='urdmu')
+logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='urdmu')
 from sklearn.metrics import roc_auc_score, average_precision_score
 def norm(data):
     l2 = torch.norm(data, p=2, dim=-1, keepdim=True)
@@ -153,7 +153,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                 logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}, cur_step:{cur_step}')
 
         epoch_time = time.time() - epoch_start_time
-        if X_test is not None and trainer.is_test:
+        if X_test is not None and trainer.is_test and cur_step == trainer.step:
             trainer.fitted= True
             with torch.no_grad():
                 scores = trainer.predict_proba(X_test)  # 得分696270
@@ -174,6 +174,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
+                write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc, ap=test_ap, seed=trainer.seed,res_type='frame')
+                write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc_v2, ap=test_ap_v2, seed=trainer.seed,res_type='clip')
                 logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
                 logger.info(
                     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
