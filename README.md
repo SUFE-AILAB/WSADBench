@@ -68,7 +68,7 @@ Download two lightweight tabular datasets (`musk` and `cardio`) from the mirror 
 ```
 mkdir -p WSADBench/datasets/Classical
 wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/25_musk.npz
-wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/6_cardio.npz
+wget -P WSADBench/datasets/Classical/ https://jihulab.com/BraudoCC/ADBench_datasets/-/raw/master/Classical/30_satellite.npz
 ```
 
 ### 3. Run Demo Experiment
@@ -293,6 +293,17 @@ python run_experiment.py --data_type tabular_classical --models LimiX --seed_lis
 
 
 ### PyOD
+
+```
+# 2. Create and activate conda environment (Python 3.9)
+conda create --name wsad_pyod python=3.9.21 -y
+conda activate wsad_pyod
+
+pip install -r requirements/req_pyod.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# run pyod (unsupervised)
+ python run_experiment.py --data_type tabular_classical --models  IForest AutoEncoder --seed_list 102
+```
 
 
 
