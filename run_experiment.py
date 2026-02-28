@@ -132,7 +132,6 @@ class ExperimentRunner:
             "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
-            "tabular_CV_by_ResNet18_OOD_pic",
 
         ]:
             raise ValueError(f"data_type must have 'video' or 'tabular'...... in it, got '{data_type}'")
@@ -1216,7 +1215,6 @@ def main():
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
-            "tabular_CV_by_ResNet18_OOD_pic",
             "CV_by_ViT_bags_inexact"
         ],
         required=True,
