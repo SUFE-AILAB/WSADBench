@@ -1,7 +1,7 @@
 from WSADBench.myutils import Utils
 import numpy as np
 
-#add the baselines from the pyod package
+# add the baselines from the pyod package
 from pyod.models.iforest import IForest
 from pyod.models.ocsvm import OCSVM
 from pyod.models.abod import ABOD
@@ -25,11 +25,13 @@ from pyod.models.rod import ROD
 from pyod.models.sod import SOD
 from pyod.models.sos import SOS
 from pyod.models.vae import VAE
+# from pyod.models.auto_encoder_torch import AutoEncoder
 from pyod.models.auto_encoder import AutoEncoder
 from pyod.models.so_gaal import SO_GAAL
 from pyod.models.mo_gaal import MO_GAAL
 from pyod.models.xgbod import XGBOD
 from pyod.models.deep_svdd import DeepSVDD
+
 try:
     from pyod.models.dif import DIF
     from pyod.models.alad import ALAD
@@ -49,17 +51,16 @@ class PYOD():
         self.utils = Utils()
 
         self.model_name = model_name
-        self.model_dict = {'IForest':IForest, 'OCSVM':OCSVM, 'ABOD':ABOD, 'CBLOF':CBLOF, 'COF':COF, 'AOM':aom,
-                           'COPOD':COPOD, 'ECOD':ECOD,  'FeatureBagging':FeatureBagging, 'HBOS':HBOS, 'KNN':KNN,
-                           'LMDD':LMDD, 'LODA':LODA, 'LOF':LOF, 'LOCI':LOCI, 'LSCP':LSCP, 'MAD':MAD,
-                           'MCD':MCD, 'PCA':PCA, 'ROD':ROD, 'SOD':SOD, 'SOS':SOS, 'VAE':VAE, 'DeepSVDD': DeepSVDD,
-                           'AutoEncoder': AutoEncoder, 'SOGAAL': SO_GAAL, 'MOGAAL': MO_GAAL,'XGBOD': XGBOD,
+        self.model_dict = {'IForest': IForest, 'OCSVM': OCSVM, 'ABOD': ABOD, 'CBLOF': CBLOF, 'COF': COF, 'AOM': aom,
+                           'COPOD': COPOD, 'ECOD': ECOD, 'FeatureBagging': FeatureBagging, 'HBOS': HBOS, 'KNN': KNN,
+                           'LMDD': LMDD, 'LODA': LODA, 'LOF': LOF, 'LOCI': LOCI, 'LSCP': LSCP, 'MAD': MAD,
+                           'MCD': MCD, 'PCA': PCA, 'ROD': ROD, 'SOD': SOD, 'SOS': SOS, 'VAE': VAE, 'DeepSVDD': DeepSVDD,
+                           'AutoEncoder': AutoEncoder, 'SOGAAL': SO_GAAL, 'MOGAAL': MO_GAAL, 'XGBOD': XGBOD,
                            }
         try:
             self.model_dict.update({'ALAD': ALAD, 'DIF': DIF, 'SO_GAAL': SO_GAAL, 'LUNAR': LUNAR})
         except:
             pass
-
 
         self.tune = tune
 
@@ -68,34 +69,34 @@ class PYOD():
         define the hyper-parameter search grid for different unsupervised mdoel
         '''
 
-        param_grid_dict = {'IForest': [10, 50, 100, 500], # n_estimators, default=100
-                           'OCSVM': ['linear', 'poly', 'rbf', 'sigmoid'], # kernel, default='rbf',
-                           'ABOD': [3, 5, 7, 9], # n_neighbors, default=5
-                           'CBLOF': [4, 6, 8, 10], # n_clusters, default=8
-                           'COF': [5, 10, 20, 50], # n_neighbors, default=20
+        param_grid_dict = {'IForest': [10, 50, 100, 500],  # n_estimators, default=100
+                           'OCSVM': ['linear', 'poly', 'rbf', 'sigmoid'],  # kernel, default='rbf',
+                           'ABOD': [3, 5, 7, 9],  # n_neighbors, default=5
+                           'CBLOF': [4, 6, 8, 10],  # n_clusters, default=8
+                           'COF': [5, 10, 20, 50],  # n_neighbors, default=20
                            'AOM': None,
                            'COPOD': None,
                            'ECOD': None,
-                           'FeatureBagging': [3, 5, 10, 20], # n_estimators, default=10
-                           'HBOS': [3, 5, 10, 20], # n_bins, default=10
-                           'KNN': [3, 5, 10, 20], # n_neighbors, default=5
-                           'LMDD': ['aad', 'var', 'iqr'], # dis_measure, default='aad'
-                           'LODA': [3, 5, 10, 20], # n_bins, default=10
-                           'LOF': [5, 10, 20, 50], # n_neighbors, default=20
-                           'LOCI': [0.1, 0.25, 0.5, 0.75], # alpha, default=0.5
-                           'LSCP': [3, 5, 10, 20], # n_bins, default=10
+                           'FeatureBagging': [3, 5, 10, 20],  # n_estimators, default=10
+                           'HBOS': [3, 5, 10, 20],  # n_bins, default=10
+                           'KNN': [3, 5, 10, 20],  # n_neighbors, default=5
+                           'LMDD': ['aad', 'var', 'iqr'],  # dis_measure, default='aad'
+                           'LODA': [3, 5, 10, 20],  # n_bins, default=10
+                           'LOF': [5, 10, 20, 50],  # n_neighbors, default=20
+                           'LOCI': [0.1, 0.25, 0.5, 0.75],  # alpha, default=0.5
+                           'LSCP': [3, 5, 10, 20],  # n_bins, default=10
                            'MAD': None,
                            'MCD': None,
-                           'PCA': [0.25, 0.5, 0.75, None], # n_components
+                           'PCA': [0.25, 0.5, 0.75, None],  # n_components
                            'ROD': None,
-                           'SOD': [5, 10, 20, 50], # n_neighbors, default=20
-                           'SOS': [2.5, 4.5, 7.5, 10.0], # perplexity, default=4.5
+                           'SOD': [5, 10, 20, 50],  # n_neighbors, default=20
+                           'SOS': [2.5, 4.5, 7.5, 10.0],  # perplexity, default=4.5
                            'VAE': None,
                            'AutoEncoder': None,
-                           'SOGAAL': [10, 20, 50, 100], # stop_epochs, default=20
-                           'MOGAAL': [10, 20, 50, 100], # stop_epochs, default=20
+                           'SOGAAL': [10, 20, 50, 100],  # stop_epochs, default=20
+                           'MOGAAL': [10, 20, 50, 100],  # stop_epochs, default=20
                            'XGBOD': None,
-                           'DeepSVDD': [20, 50, 100, 200] # epochs, default=100
+                           'DeepSVDD': [20, 50, 100, 200]  # epochs, default=100
                            }
 
         return param_grid_dict[model_name]
@@ -113,12 +114,12 @@ class PYOD():
 
         if param_grid is not None:
             # index of normal ana abnormal samples
-            idx_a = np.where(y_train==1)[0]
-            idx_n = np.where(y_train==0)[0]
-            idx_n = np.random.choice(idx_n, int((len(idx_a) * (1-ratio)) / ratio), replace=True)
+            idx_a = np.where(y_train == 1)[0]
+            idx_n = np.where(y_train == 0)[0]
+            idx_n = np.random.choice(idx_n, int((len(idx_a) * (1 - ratio)) / ratio), replace=True)
 
-            idx = np.append(idx_n, idx_a) #combine
-            np.random.shuffle(idx) #shuffle
+            idx = np.append(idx_n, idx_a)  # combine
+            np.random.shuffle(idx)  # shuffle
 
             # valiation set (and the same anomaly ratio as in the original dataset)
             X_val = X_train[idx]
@@ -165,7 +166,8 @@ class PYOD():
                         model = self.model_dict[self.model_name](alpha=param).fit(X_train)
 
                     elif self.model_name == 'LSCP':
-                        model = self.model_dict[self.model_name](detector_list=[LOF(),LOF()], n_bins=param).fit(X_train)
+                        model = self.model_dict[self.model_name](detector_list=[LOF(), LOF()], n_bins=param).fit(
+                            X_train)
 
                     elif self.model_name == 'PCA':
                         model = self.model_dict[self.model_name](n_components=param).fit(X_train)
@@ -183,7 +185,7 @@ class PYOD():
                         model = self.model_dict[self.model_name](stop_epochs=param).fit(X_train)
 
                     elif self.model_name == 'DeepSVDD':
-                        model = self.model_dict[self.model_name](X_train.shape[1],epochs=param).fit(X_train)
+                        model = self.model_dict[self.model_name](X_train.shape[1], epochs=param).fit(X_train)
 
                     elif self.model_name in self.model_dict:
                         model = self.model_dict[self.model_name]().fit(X_train)
@@ -217,10 +219,10 @@ class PYOD():
 
         return best_param
 
-    def fit(self, X_train, y_train=None, ratio=None,normal_only=False):
+    def fit(self, X_train, y_train=None, ratio=None, normal_only=False):
         if normal_only and self.model_name in ['AutoEncoder', 'VAE'] and y_train is not None:
             # only use the normal samples to fit the model
-            idx_n = np.where(y_train==0)[0]
+            idx_n = np.where(y_train == 0)[0]
             X_train = X_train[idx_n]
             y_train = y_train[idx_n]
 
@@ -275,7 +277,8 @@ class PYOD():
                 self.model = self.model_dict[self.model_name](alpha=best_param).fit(X_train)
 
             elif self.model_name == 'LSCP':
-                self.model = self.model_dict[self.model_name](detector_list=[LOF(), LOF()], n_bins=best_param).fit(X_train)
+                self.model = self.model_dict[self.model_name](detector_list=[LOF(), LOF()], n_bins=best_param).fit(
+                    X_train)
 
             elif self.model_name == 'PCA':
                 self.model = self.model_dict[self.model_name](n_components=best_param).fit(X_train)
@@ -311,7 +314,8 @@ class PYOD():
                 return self
 
             # unsupervised method would ignore the y labels
-            self.model = self.model_dict[self.model_name]().fit(X_train, y_train)
+            self.model = self.model_dict[self.model_name]()
+            self.model.fit(X_train)
 
         return self
 
