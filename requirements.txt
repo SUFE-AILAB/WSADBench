@@ -9,7 +9,7 @@ openpyxl==3.1.5         # Used to save Excel results
 xlrd==2.0.1
 
 # === Baselines ===
-pyod==1.0.1
+pyod==2.0.6
 lightgbm==4.6.0
 xgboost==2.1.4
 catboost==1.2.8
