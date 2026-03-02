@@ -257,6 +257,8 @@ class FrameToVideoConverter:
         Returns:
             List[Tuple[str, str]]: 视频文件路径和相对路径的列表
         """
+        base_dir = str(Path.cwd())
+        # print('tad base:' + base_dir)
         video_files = []
 
         # TAD数据集的帧存储在raw_data下的三个子目录中
@@ -302,12 +304,14 @@ class FrameToVideoConverter:
         # 排查多余视频
         raw_list = []
         try:
+            # base_dir = Path.cwd()
+            # print('tad base:'+base_dir)
             with open(
-                    r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_train.txt',
+                    base_dir+ r'/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_train.txt',
                     'r') as f:
                 for line in f:
                     raw_list.append(line.strip())
-            with open(r'/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_test.txt',
+            with open(base_dir+r'/WSADBench/datasets/source_datasets/TAD/splits/Anomaly_test.txt',
                       'r') as f:
                 for line in f:
                     raw_list.append(line.strip())

@@ -126,11 +126,9 @@ python WSADBench/datasets/download_dataset.py --datasets Classical
 
 
 
-## 🧩 Extra operation for some models
+## 🧩 Extra Operations for Some Models 
 
-some model have conflict in the main pip environment, need to be run in the extra pip environment.
-
-some model need ckpts
+Some models have conflicts in the main pip environment and need to be run in a separate pip environment. Additionally, some models require pre-trained checkpoints (ckpts) to function properly.
 
 ### TabR-S
 
@@ -177,19 +175,6 @@ python run_experiment.py --data_type tabular_classical --models LimiX --seed_lis
 ```
 
 
-
-### PyOD
-
-```
-# Create and activate conda environment (Python 3.9)
-conda create --name wsad_pyod python=3.9.21 -y
-conda activate wsad_pyod
-
-pip install -r requirements/req_pyod.txt
-
-# run pyod (unsupervised)
- python run_experiment.py --data_type tabular_classical --models  IForest AutoEncoder --seed_list 102
-```
 
 
 
@@ -351,7 +336,7 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 | REPEN | REPEN | Repr. Learning | Representation learning for PU learning |
 | XGBOD | XGBOD | Repr. Learning | Feature augmentation for outlier detection |
 | RoSAS | RoSAS | Data Aug. | Robust semi-supervised anomaly segmentation |
-| Dual-MGAN | Dual-MGAN | Data Aug. | Dual-MGAN for anomaly detection |
+| Dual-MGAN | DualMGAN | Data Aug. | Dual-MGAN for anomaly detection |
 | FEAWAD | FEAWAD | Reconstruction | Feature encoding with autoencoders for weakly-supervised AD |
 | DDAE | AnoDDAE | Diffusion DAE | Anomaly detection with denoising diffusion autoencoders |
 | SOEL-NTL | NTL | Pseudo-Labeling | Self-training with outlier exposure |
@@ -531,22 +516,7 @@ results/
             └── model_stats.json            # Model statistics
 ```
 
-<!-- ---
 
-## 📝 Citation
-
-If you use WSADBench in your research, please cite:
-
-```bibtex
-@article{wsadbench2025,
-  title={Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark},
-  author={WSADBench Authors},
-  journal={arXiv preprint},
-  year={2025}
-}
-``` -->
-
----
 
 ## ⚖️ License
 
