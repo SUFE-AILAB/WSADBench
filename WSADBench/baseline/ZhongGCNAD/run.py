@@ -545,10 +545,10 @@ class ZhongGCNAD:
                 test_ap_v2 = average_precision_score(gt, prob)
 
                 # 4. 写入结果文件
-                write_jsonl(model_name='ZhongGCNAD', epochs=self.optimization_rounds, seed=self.seed, auc=test_auc,
-                            ap=test_ap, res_type='frame')
-                write_jsonl(model_name='ZhongGCNAD', epochs=self.optimization_rounds, seed=self.seed, auc=test_auc_v2,
-                            ap=test_ap_v2, res_type='clip')
+                # write_jsonl(model_name='ZhongGCNAD', epochs=self.optimization_rounds, seed=self.seed, auc=test_auc,
+                #             ap=test_ap, res_type='frame')
+                # write_jsonl(model_name='ZhongGCNAD', epochs=self.optimization_rounds, seed=self.seed, auc=test_auc_v2,
+                #             ap=test_ap_v2, res_type='clip')
 
                 logger.info(f"[Result] Frame-level (v1) - AUC: {test_auc:.4f}, AP: {test_ap:.4f}")
                 logger.info(f"[Result] Clip-level  (v2) - AUC: {test_auc_v2:.4f}, AP: {test_ap_v2:.4f}")

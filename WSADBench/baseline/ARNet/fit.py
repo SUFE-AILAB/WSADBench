@@ -266,10 +266,10 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
 
 
                 # 写入结果文件
-                write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc, ap=test_ap,
-                            res_type='frame')
-                write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc_v2, ap=test_ap_v2,
-                            res_type='clip')
+                # write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc, ap=test_ap,
+                #             res_type='frame')
+                # write_jsonl(model_name='ARNet', epochs=epoch, seed=trainer.seed, auc=test_auc_v2, ap=test_ap_v2,
+                #             res_type='clip')
 
                 if verbose:
                     print(f"[Result] Frame-level (v1) - AUC: {test_auc:.4f}, AP: {test_ap:.4f}")

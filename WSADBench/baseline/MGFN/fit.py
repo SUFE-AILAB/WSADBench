@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, TensorDataset, Dataset
 
 from common_utils.baseline_utils import get_gt, write_jsonl
 
-logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='mgfn')
+# logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='mgfn')
 def sparsity(arr, batch_size, lamda2):
     loss = torch.mean(torch.norm(arr, dim=0))
     return lamda2 * loss
@@ -134,7 +134,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
     if verbose:
         print(f"开始训练MGFN模型，共{epochs}轮...")
         print(f"设备: {device}")
-    logger.info('start train ...')
+    # logger.info('start train ...')
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     best_epoch = -1
     best_auc = 0.0
@@ -163,7 +163,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     repeat_indices = torch.randint(0, normal_batch_size, (shortage,))
                     repeated_normal = normal_data[repeat_indices]
                     normal_data = torch.cat([normal_data, repeated_normal], dim=0)
-                    logger.info(f"Normal data upsampled from {normal_batch_size} to {normal_data.shape[0]}")
+                    # logger.info(f"Normal data upsampled from {normal_batch_size} to {normal_data.shape[0]}")
 
                 elif anomaly_batch_size < normal_batch_size:
                     # anomaly样本不够，进行重采样
@@ -172,7 +172,7 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     repeat_indices = torch.randint(0, anomaly_batch_size, (shortage,))
                     repeated_anomaly = anomaly_data[repeat_indices]
                     anomaly_data = torch.cat([anomaly_data, repeated_anomaly], dim=0)
-                    logger.info(f"Anomaly data upsampled from {anomaly_batch_size} to {anomaly_data.shape[0]}")
+                    # logger.info(f"Anomaly data upsampled from {anomaly_batch_size} to {anomaly_data.shape[0]}")
 
             # 确保长度一致
             assert normal_data.shape[0] == anomaly_data.shape[0], \
@@ -216,8 +216,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
             if trainer.use_scheduler:
                 trainer.scheduler.step()
 
-            if verbose and batch_idx % 10 == 0:
-                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
+            # if verbose and batch_idx % 10 == 0:
+            #     logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
 
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
@@ -243,11 +243,11 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc, ap=test_ap, res_type='frame' )
-                write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc_v2, ap=test_ap_v2, res_type='clip' )
-                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logger.info(
-                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+                # write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc, ap=test_ap, res_type='frame' )
+                # write_jsonl(model_name='mgfn', epochs=epoch, seed=trainer.seed, auc = test_auc_v2, ap=test_ap_v2, res_type='clip' )
+                # logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                # logger.info(
+                #     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
         train_history['loss'].append(avg_epoch_loss)
         train_history['epoch_time'].append(epoch_time)
 

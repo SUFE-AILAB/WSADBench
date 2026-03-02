@@ -463,10 +463,10 @@ def fit_utils(X_train, y_train, model, optimizer, epochs, batch_size, device,X_t
 
     # 构建 Dataset 和 DataLoader
     normal_dataset = VideoDataset(X_normal_videos_balanced, seg)
-    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
     anomaly_dataset = VideoDataset(X_anomaly_videos_balanced, seg)
-    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
 
     # 调用主训练函数
@@ -602,8 +602,8 @@ def fit_VadClip(X_train, y_train, model, optimizer, epochs, batch_size, device,X
     normal_dataset = VideoDataset_VadClip(X_normal_videos, normal_vid_kind, normal_clip_num, seg)
     anomaly_dataset = VideoDataset_VadClip(X_anomaly_videos, abnormal_vid_kind, abnormal_clip_num, seg)
 
-    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=6)
-    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=6)
+    normal_loader = DataLoader(normal_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    anomaly_loader = DataLoader(anomaly_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
     return  {
     "model": model,

@@ -39,4 +39,6 @@ copulas
 modelscope  # pull data
 combo==0.1.3
 
+ftfy
+regex
 

@@ -17,7 +17,7 @@ torch.set_default_tensor_type('torch.FloatTensor')
 from torch.nn import MSELoss
 # from WSADBench.baseline.VadClip.clip.myUtils import myLogger as logging
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
-logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='rtfm')
+# logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='rtfm')
 
 
 def sparsity(arr,  lamda2):
@@ -126,7 +126,7 @@ def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_i
 
 def fit(model, optimizer, epochs, device, X_test, trainer,
                 verbose=True, normal_loader=None, anomaly_loader=None):
-    logger.info('start train ...')
+    # logger.info('start train ...')
     model.train()
 
     train_history = {
@@ -189,8 +189,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
             epoch_loss += loss.item()
             batch_count += 1
 
-            if verbose and batch_idx % 10 == 0:
-                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
+            # if verbose and batch_idx % 10 == 0:
+            #     logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}')
 
         epoch_time = time.time() - epoch_start_time
         avg_epoch_loss = epoch_loss / batch_count if batch_count > 0 else 0
@@ -220,11 +220,11 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                write_jsonl('rtfm', epoch, trainer.seed, test_auc, test_ap,  res_type='frame')
-                write_jsonl('rtfm', epoch, trainer.seed, test_auc_v2, test_ap_v2, res_type='clip')
-                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logger.info(
-                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+                # write_jsonl('rtfm', epoch, trainer.seed, test_auc, test_ap,  res_type='frame')
+                # write_jsonl('rtfm', epoch, trainer.seed, test_auc_v2, test_ap_v2, res_type='clip')
+                # logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                # logger.info(
+                #     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
 
         # print("train finish")
         train_history['loss'].append(avg_epoch_loss)
