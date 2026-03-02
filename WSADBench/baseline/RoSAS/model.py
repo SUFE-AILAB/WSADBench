@@ -39,7 +39,7 @@ class RoSASLoss(torch.nn.Module):
     """
 
     def __init__(
-        self, l2_reg_weight=0.0, margin=1.0, alpha=1.0, beta=2.0, T=2, k=2, score_loss="smooth", device="cuda"
+            self, l2_reg_weight=0.0, margin=1.0, alpha=1.0, beta=2.0, T=2, k=2, score_loss="smooth", device="cuda"
     ):
         super(RoSASLoss, self).__init__()
         self.l2_reg_weight = l2_reg_weight
@@ -143,14 +143,37 @@ class RoSASLoss(torch.nn.Module):
             loss_out = loss_out.mean()
             loss_intra = loss_intra.mean()
 
-        # 动态权重调整
-        k1 = torch.exp((loss_emb / pre_emb_loss) / self.T) if pre_emb_loss != 0 else torch.tensor(1.0).to(self.device)
-        k2 = (
-            torch.exp((loss_score / pre_score_loss) / self.T)
-            if pre_score_loss != 0
-            else torch.tensor(1.0).to(self.device)
-        )
-        loss = (k1 / (k1 + k2)) * loss_emb + (k2 / (k1 + k2)) * loss_score + self.l2_reg_weight * l2_reg
+        # --动态权重调整  源码------------------------
+        # k1 = torch.exp((loss_emb / pre_emb_loss) / self.T) if pre_emb_loss != 0 else torch.tensor(1.0).to(self.device)
+        # k2 = (
+        #     torch.exp((loss_score / pre_score_loss) / self.T)
+        #     if pre_score_loss != 0
+        #     else torch.tensor(1.0).to(self.device)
+        # )
+        # loss = (k1 / (k1 + k2)) * loss_emb + (k2 / (k1 + k2)) * loss_score + self.l2_reg_weight * l2_reg
+        # -----------------结束-----------------------
+
+        # ==========================================
+        # 修复核心：动态权重调整的数值稳定性处理
+        # ==========================================
+
+        # 1. 设置一个极小值 eps，防止分母为 0
+        eps = 1e-8
+
+        # 2. 计算指数的输入，并进行截断 (clamp)，防止 exp() 结果溢出为 Inf
+        # float32 的 exp(88) 左右就会溢出，我们限制在 [-10, 10] 之间通常足够且安全
+        val_emb = (loss_emb / (pre_emb_loss + eps)) / self.T
+        val_emb = torch.clamp(val_emb, max=10.0)
+
+        val_score = (loss_score / (pre_score_loss + eps)) / self.T
+        val_score = torch.clamp(val_score, max=10.0)
+
+        # 3. 计算 k1, k2
+        k1 = torch.exp(val_emb) if pre_emb_loss != 0 else torch.tensor(1.0).to(self.device)
+        k2 = torch.exp(val_score) if pre_score_loss != 0 else torch.tensor(1.0).to(self.device)
+
+        # 4. 计算最终 loss，再次加上 eps 防止 k1+k2 为 0 (虽然概率很小)
+        loss = (k1 / (k1 + k2 + eps)) * loss_emb + (k2 / (k1 + k2 + eps)) * loss_score + self.l2_reg_weight * l2_reg
 
         return loss, loss_emb, loss_score, loss_out, loss_intra
 

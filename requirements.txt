@@ -8,12 +8,14 @@ matplotlib
 openpyxl==3.1.5         # Used to save Excel results
 xlrd==2.0.1
 
-# === Machine Learning Baselines ===
+# === Baselines ===
 pyod==1.0.1
 lightgbm==4.6.0
 xgboost==2.1.4
 catboost==1.2.8
 tabpfn==6.2.0           # TabPFN
+rtdl==0.14.0.dev5  # FTTransformer
+tabm==0.0.3 # TabMCls
 
 # === Weak Supervision / Data Quality ===
 cleanlab==2.7.1
@@ -23,9 +25,18 @@ pytorchvideo==0.1.5     # Video processing dependency
 einops                  # Commonly used in video/CV models
 delu==0.0.26
 fsspec==2025.3.0
+tensorboard==2.19.0
+torchvision==0.20.1  # DualMGAN
+torch==2.5.1
+tensorflow==2.19.0
+KDEpy==1.1.12 # NTL
+
 
 # === Utilities ===
 PyYAML>=6.0             # Required for parsing config files
 wget==3.2
 copulas
 modelscope  # pull data
+combo==0.1.3
+
+
