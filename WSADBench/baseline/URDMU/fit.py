@@ -102,8 +102,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
     }
 
     if verbose:
-        print(f"开始训练URDMU模型，共{epochs}轮...")
-        print(f"设备: {device}")
+        print(f"Starting URDMU model training, total {epochs} epochs...")
+        print(f"Device: {device}")
 
     # logger.info('start train ...')
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
@@ -182,13 +182,14 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
 
         train_history['epoch_time'].append(epoch_time)
 
-        if verbose:  # 打印结果，只练不测。。
-            print(f'Epoch {epoch + 1}/{epochs} 完成 - 平均损失: {loss.item():.6f}, 耗时: {epoch_time:.2f}s')
-        if step_flag:  # 步数退出
+        if verbose:  # Print results, training only without testing...
+            print(
+                f'Epoch {epoch + 1}/{epochs} completed - Average loss: {loss.item():.6f}, Time elapsed: {epoch_time:.2f}s')
+        if step_flag:  # Exit by step count
             break
 
     if verbose:
-        print("训练完成！")
+        print("Training completed!")
 
     return train_history
 

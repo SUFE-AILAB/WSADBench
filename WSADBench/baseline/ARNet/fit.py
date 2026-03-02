@@ -173,10 +173,11 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
     k = trainer.k
 
     if verbose:
-        print(f"开始训练ARNet模型，共{epochs}轮...")
-        print(f"设备: {device}")
-        print(f"DMIL_loss权重: {DMIL_weight}, 中心损失权重: {Center_weight}")     #DMIL_loss 是计算每个视频中top-k的帧级标签和视频级标签的交叉熵损失
-                                                                            #中心损失是计算正常片段分数与平均分数差的平方
+        print(f"Starting ARNet model training, total {epochs} epochs...")
+        print(f"Device: {device}")
+        print(
+            f"DMIL_loss weight: {DMIL_weight}, Center loss weight: {Center_weight}")  # DMIL_loss calculates the cross-entropy loss between the top-k frame-level labels and video-level labels in each video
+        # Center loss calculates the squared difference between the score of normal clips and the average score
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     for epoch in range(epochs):
         epoch_start_time = time.time()
@@ -238,7 +239,7 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
         train_history['epoch_time'].append(epoch_time)
         
         if verbose:
-            print(f'Epoch {epoch+1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
+            print(f'Epoch {epoch+1}/{epochs} completed - Average loss: {avg_epoch_loss:.6f}, Time elapsed: {epoch_time:.2f}s')
             # --- [新增] 3. 最后一个Epoch进行测试与评估 (参考 Sultani 实现) ---
         if X_test is not None  and epoch == epochs - 1:
             trainer.fitted = True
@@ -281,7 +282,7 @@ def fit_ARNet(model, optimizer, epochs, device, X_test, trainer,
 
     
     if verbose:
-        print("训练完成！")
+        print("train finish！")
     
     return train_history
 def _process_video_scores(scores, video_shape,y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames):

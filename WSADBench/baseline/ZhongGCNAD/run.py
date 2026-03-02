@@ -445,16 +445,16 @@ class ZhongGCNAD:
         current_labels = y_clips.copy()
 
         if self.verbose:
-            logger.info("--- 初始分类器训练 ---")
+            logger.info("--- Initial classifier training ---")
         self._train_classifier(X_clips, current_labels, self.classifier_epochs)
 
         for i in range(self.optimization_rounds):
             if self.verbose:
-                logger.info(f"\n--- 交替优化轮次 {i + 1}/{self.optimization_rounds} ---")
+                logger.info(f"\n--- Alternating optimization round {i + 1}/{self.optimization_rounds} ---")
 
-            # 1. 使用当前分类器生成软标签和方差
+            # 1. Generate soft labels and variance using the current classifier
             if self.verbose:
-                logger.info("  步骤1: 生成当前软标签和方差...")
+                logger.info("  Step 1: Generating current soft labels and variance...")
             self.action_classifier.eval()
             with torch.no_grad():
                 # 分批处理以避免内存溢出
@@ -485,15 +485,15 @@ class ZhongGCNAD:
                 del soft_labels_list, variances_list
                 self._clear_gpu_memory()
 
-            # 2. 训练GCN清洁器
+            # 2. Train GCN label cleaner
             if self.verbose:
-                logger.info("  步骤2: 训练GCN标签清洁器...")
+                logger.info("  Step 2: Training GCN label cleaner...")
             gcn_train_dataset = CustomDataset(X_clips, soft_labels, vid_info_clips)
             self._train_gcn(gcn_train_dataset, variances, self.gcn_epochs)
 
-            # 3. 使用训练好的GCN生成清洁后的软标签
+            # 3. Generate cleaned soft labels using the trained GCN
             if self.verbose:
-                logger.info("  步骤3: 生成清洁后的软标签...")
+                logger.info("  Step 3: Generating cleaned soft labels...")
             self.gcn_model.eval()
             new_labels_list = []
 
@@ -513,18 +513,18 @@ class ZhongGCNAD:
 
             # 4. 使用清洁后的标签再训练分类器
             if self.verbose:
-                logger.info("  步骤4: 使用清洁标签再训练分类器...")
+                logger.info("  Step 4: Retraining classifier with cleaned labels...")
             self._train_classifier(X_clips, current_labels, self.classifier_epochs)
 
         self.fitted = True
         if self.verbose:
-            logger.info("\n--- 训练完成 ---")
+            logger.info("\n--- Training completed ---")
             """
-            todo:添加两种gt的计算
+            todo: add calculation of two types of gt
             """
-            # --- [修改开始] 添加两种GT的计算 ---
+            # --- [Modification Start] Add calculation of two types of GT ---
             if X_test_feat is not None:
-                logger.info("开始计算测试集指标 (Frame-level & Clip-level)...")
+                logger.info("Starting to calculate test set metrics (Frame-level & Clip-level)...")
 
                 # 1. 获取预测分数
                 scores = self.predict_proba(X_test_feat)

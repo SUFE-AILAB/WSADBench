@@ -78,18 +78,18 @@ class RTFM:
             if self.use_scheduler:
                 self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.scheduler_milestones)
             if self.verbose:
-                print(f"RTFM模型初始化完成")
-                print(f"设备: {self.device}")
-                print(f"模型参数数量: {sum(p.numel() for p in self.model.parameters()):,}")
+                print(f"RTFM model initialization completed")
+                print(f"Device: {self.device}")
+                print(f"Number of model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
 
     def fit(self, X, y,  vid_source_clips_num=None,  X_test=None, y_test=None, crops_num=None):
         start_time = time.time()
         if self.verbose:
             print("=" * 60)
-            print("开始训练RTFM模型")
+            print("Starting RTFM model training")
             print("=" * 60)
-            print(f"训练样本数: {len(X)}")
-            print(f"正常样本: {np.sum(y == 0)}, 异常样本: {np.sum(y == 1)}")
+            print(f"Number of training samples: {len(X)}")
+            print(f"Normal samples: {np.sum(y == 0)}, Anomalous samples: {np.sum(y == 1)}")
         # 数据预处理
         X = self._preprocess_data(X)
         self.input_dim = X.shape[1]
@@ -116,15 +116,15 @@ class RTFM:
         training_time = time.time() - start_time
 
         if self.verbose:
-            print(f"训练完成，耗时: {training_time:.2f}秒")
+            print(f"Training completed, time elapsed: {training_time:.2f} seconds")
 
-            # 如果有测试数据，计算测试性能
+            # Calculate test performance if test data is available
             if X_test is not None and y_test is not None:
                 test_scores = self.predict_proba(X_test)
                 if len(np.unique(y_test)) > 1:
                     test_auc = roc_auc_score(y_test, test_scores)
                     test_ap = average_precision_score(y_test, test_scores)
-                    print(f"测试集 AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
+                    print(f"Test set AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f}")
 
         return self
 
