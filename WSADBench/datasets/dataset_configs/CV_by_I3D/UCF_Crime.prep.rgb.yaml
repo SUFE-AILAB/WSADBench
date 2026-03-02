@@ -1,8 +1,8 @@
 PREPROCESS:
     MODALITY: RGB  # 转移到主文件夹而不是zsy文件夹
-    INPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/UCF_Crime'  # 'WSADBench/datasets/source_datasets/UCF_Crime/'  # 输入总的文件夹的位置
-    OUTPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/CV_by_I3D/UCF_Crime'  # 'WSADBench/datasets/CV_by_I3D/UCF_Crime/'  # 输出特征位置
-    RAW_DATA_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/UCF_Crime/raw_data' #'WSADBench/datasets/source_datasets/UCF_Crime/raw_data/'  # 原始视频位置
+    INPUT_DIR: 'WSADBench/datasets/source_datasets/UCF_Crime'  # 'WSADBench/datasets/source_datasets/UCF_Crime/'  # 输入总的文件夹的位置
+    OUTPUT_DIR: 'WSADBench/datasets/CV_by_I3D/UCF_Crime'  # 'WSADBench/datasets/CV_by_I3D/UCF_Crime/'  # 输出特征位置
+    RAW_DATA_DIR: 'WSADBench/datasets/source_datasets/UCF_Crime/raw_data' #'WSADBench/datasets/source_datasets/UCF_Crime/raw_data/'  # 原始视频位置
     MODALITY_SAVE_DIR: 'all_rgbs'  # 输出文件夹的子文件夹
     RESIZE: [340, 256]
     NUM_CLIPS: -1

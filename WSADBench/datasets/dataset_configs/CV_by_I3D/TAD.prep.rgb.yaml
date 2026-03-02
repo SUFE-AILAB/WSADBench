@@ -1,8 +1,8 @@
 PREPROCESS:
     MODALITY: RGB
-    INPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/TAD/'
-    OUTPUT_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/CV_by_MViT_32/TAD/'
-    RAW_DATA_DIR: '/gpudata/wsad/working_space/WSADBench/WSADBench/datasets/source_datasets/TAD/raw_data/'
+    INPUT_DIR: 'WSADBench/datasets/source_datasets/TAD/'
+    OUTPUT_DIR: 'WSADBench/datasets/CV_by_MViT_32/TAD/'
+    RAW_DATA_DIR: 'WSADBench/datasets/source_datasets/TAD/raw_data/'
     MODALITY_SAVE_DIR: 'all_rgbs'
     RESIZE: [340, 256]
     NUM_CLIPS: -1  # 提取所有可能的clips

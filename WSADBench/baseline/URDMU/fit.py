@@ -7,7 +7,7 @@ import time
 from WSADBench.baseline.VadClip.clip.myUtils import setup_logging
 from common_utils.baseline_utils import get_gt, write_jsonl
 
-logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='urdmu')
+# logger = setup_logging(log_dir='/gpudata/wsad/working_space/zsy/WSADBench/WSADBench/datasets/logs', name='urdmu')
 from sklearn.metrics import roc_auc_score, average_precision_score
 def norm(data):
     l2 = torch.norm(data, p=2, dim=-1, keepdim=True)
@@ -102,10 +102,10 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
     }
 
     if verbose:
-        print(f"开始训练URDMU模型，共{epochs}轮...")
-        print(f"设备: {device}")
+        print(f"Starting URDMU model training, total {epochs} epochs...")
+        print(f"Device: {device}")
 
-    logger.info('start train ...')
+    # logger.info('start train ...')
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
     best_epoch = -1
     best_auc = 0.0
@@ -149,8 +149,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
             if cur_step >= trainer.step:
                 step_flag = True
                 break
-            if verbose and batch_idx % 10 == 0:
-                logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}, cur_step:{cur_step}')
+            # if verbose and batch_idx % 10 == 0:
+            #     logger.info(f'Epoch {epoch + 1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.6f}, cur_step:{cur_step}')
 
         epoch_time = time.time() - epoch_start_time
         if X_test is not None and trainer.is_test and cur_step == trainer.step:
@@ -174,21 +174,22 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
                     best_epoch_v2 = epoch
                     best_auc_v2 = test_auc_v2
                     best_ap_v2 = test_ap_v2
-                write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc, ap=test_ap, seed=trainer.seed,res_type='frame')
-                write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc_v2, ap=test_ap_v2, seed=trainer.seed,res_type='clip')
-                logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
-                logger.info(
-                    f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
+                # write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc, ap=test_ap, seed=trainer.seed,res_type='frame')
+                # write_jsonl(model_name='urdmu', epochs=cur_step, auc=test_auc_v2, ap=test_ap_v2, seed=trainer.seed,res_type='clip')
+                # # logger.info(f"cur epoch:{epoch} AUCROC: {test_auc:.4f}, AUCPR: {test_ap:.4f} best epoch:{best_epoch}, best auc:{best_auc:.4f}, best ap:{best_ap:4f}")
+                # logger.info(
+                #     f"cur epoch_v2:{epoch} AUCROC_v2: {test_auc_v2:.4f}, AUCPR_v2: {test_ap_v2:.4f} best epoch_v2:{best_epoch_v2}, best auc_v2:{best_auc_v2:.4f}, best ap_v2:{best_ap_v2:4f}")
 
         train_history['epoch_time'].append(epoch_time)
 
-        if verbose:  # 打印结果，只练不测。。
-            print(f'Epoch {epoch + 1}/{epochs} 完成 - 平均损失: {loss.item():.6f}, 耗时: {epoch_time:.2f}s')
-        if step_flag:  # 步数退出
+        if verbose:  # Print results, training only without testing...
+            print(
+                f'Epoch {epoch + 1}/{epochs} completed - Average loss: {loss.item():.6f}, Time elapsed: {epoch_time:.2f}s')
+        if step_flag:  # Exit by step count
             break
 
     if verbose:
-        print("训练完成！")
+        print("Training completed!")
 
     return train_history
 

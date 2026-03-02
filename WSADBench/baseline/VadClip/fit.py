@@ -132,9 +132,8 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
 
     # model.device = device  # 设置设备
     if verbose:
-        print(f"开始训练VadClip模型，共{epochs}轮...")
-        print(f"设备: {device}")
-        # print(f"稀疏性权重: {sparsity_weight}, 平滑性权重: {smoothness_weight}")
+        print(f"Starting VadClip model training, total {epochs} epochs...")
+        print(f"Device: {device}")
     prompt_text = get_prompt_text(trainer.label_map)
     # logger.info('start train ...')
     X_test, video_shape, y_test_idx, y_test_gt, y_test_gt_idx, num_clip_frames = X_test  # 拆包
@@ -233,12 +232,12 @@ def fit(model, optimizer, epochs, device, X_test, trainer,
 
         train_history['loss'].append(avg_epoch_loss)
         train_history['epoch_time'].append(epoch_time)
-        
         if verbose:
-            print(f'Epoch {epoch+1}/{epochs} 完成 - 平均损失: {avg_epoch_loss:.6f}, 耗时: {epoch_time:.2f}s')
-    
+            print(
+                f'Epoch {epoch + 1}/{epochs} completed - Average loss: {avg_epoch_loss:.6f}, Time elapsed: {epoch_time:.2f}s')
+
     if verbose:
-        print("训练完成！")
+        print("Training completed!")
     
     return train_history
 
