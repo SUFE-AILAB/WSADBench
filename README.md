@@ -351,7 +351,7 @@ python -m run_experiment  --data_type tabular_CV_by_ResNet18_OOD --models DevNet
 | REPEN | REPEN | Repr. Learning | Representation learning for PU learning |
 | XGBOD | XGBOD | Repr. Learning | Feature augmentation for outlier detection |
 | RoSAS | RoSAS | Data Aug. | Robust semi-supervised anomaly segmentation |
-| Dual-MGAN | DualMGAN | Data Aug. | Dual-MGAN for anomaly detection |
+| Dual-MGAN | Dual-MGAN | Data Aug. | Dual-MGAN for anomaly detection |
 | FEAWAD | FEAWAD | Reconstruction | Feature encoding with autoencoders for weakly-supervised AD |
 | DDAE | AnoDDAE | Diffusion DAE | Anomaly detection with denoising diffusion autoencoders |
 | SOEL-NTL | NTL | Pseudo-Labeling | Self-training with outlier exposure |
@@ -544,7 +544,7 @@ If you use WSADBench in your research, please cite:
   journal={arXiv preprint},
   year={2025}
 }
-​``` -->
+``` -->
 
 ---
 
@@ -564,5 +564,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📫 Contact
 
 For questions and issues, please open an issue on GitHub.
-
-```
