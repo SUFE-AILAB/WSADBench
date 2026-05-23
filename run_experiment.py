@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 import math
 from pathlib import Path
 from tqdm import tqdm
@@ -73,6 +73,7 @@ class ModelRegistry:
             "TabPFN": "WSADBench.baseline.TabPFN.run.TabPFN",
             "TabMCls": "WSADBench.baseline.TabMCls.run.TabMCls",
             "TabR_S": "WSADBench.baseline.TabR_S.run.TabR_S",
+            "TabICL": "WSADBench.baseline.TabICL.run.TabICL",
             "AnoDDAE": "WSADBench.baseline.AnoDDAE.run.AnoDDAE",
             "LimiX": "WSADBench.baseline.LimiX.run.LimiX16M",
             #无监督
@@ -93,6 +94,7 @@ class ModelRegistry:
             "SOS": "WSADBench.baseline.PyOD.PYOD",
             "AAE": "WSADBench.baseline.PyOD.PYOD",
             "DeepSVDD": "WSADBench.baseline.PyOD.PYOD",
+            "XGBOD": "WSADBench.baseline.PyOD.PYOD",
             
 
 
@@ -155,6 +157,10 @@ class ExperimentRunner:
             "tabular_NLP_by_RoBERTa",
             #tabular_inexact
             "classical_bags_inexact",
+            "Classical_bags_inexact_prob01",
+            "Classical_bags_inexact_bag10prob02",
+            "Classical_bags_inexact_bag20",
+            "Classical_bags_inexact_bag30",
             "CV_by_ViT_bags_inexact",
             # OOD
             "tabular_CV_by_ResNet18_OOD",
@@ -372,6 +378,18 @@ class ExperimentRunner:
         elif self.data_type == "classical_bags_inexact":  # tabular -> video:inexact
             datasets = self.data_generator.generate_dataset_list()["classical_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个classical_bags_inexact数据集")
+        elif self.data_type == "Classical_bags_inexact_bag20":  # tabular -> video:inexact with bag20
+            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact_bag20"]
+            logger.info(f"找到 {len(datasets)} 个Classical_bags_inexact_bag20数据集")
+        elif self.data_type == "Classical_bags_inexact_bag30":
+            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact_bag30"]
+            logger.info(f"找到 {len(datasets)} 个Classical_bags_inexact_bag30数据集")
+        elif self.data_type == "Classical_bags_inexact_prob01":  # tabular -> video:inexact with prob01
+            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact_prob01"]
+            logger.info(f"找到 {len(datasets)} 个Classical_bags_inexact_prob01数据集")
+        elif self.data_type == "Classical_bags_inexact_bag10prob02":
+            datasets = self.data_generator.generate_dataset_list()["Classical_bags_inexact_bag10prob02"]
+            logger.info(f"找到 {len(datasets)} 个Classical_bags_inexact_bag10prob02数据集")
         elif self.data_type == "CV_by_ViT_bags_inexact":
             datasets = self.data_generator.generate_dataset_list()["CV_by_ViT_bags_inexact"]
             logger.info(f"找到 {len(datasets)} 个CV_by_ViT_bags_inexact数据集")
@@ -565,8 +583,9 @@ class ExperimentRunner:
 
 
     def _load_finish_exp(self):  # TODO 这里加载的主键需要适应性维护
-        
-        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"] 
+
+        main_keys = ["model", "dataset", "rla", "eln","ru","flip_normal_ratio","flip_abnormal_ratio", "target_for_unlabeled", "seed","is_cleanlab","exp_note"]
+
         finished_experiments = set()
         for model_name in self.models:
             detail_file = self.model_dirs[model_name] / f"{model_name}_results.jsonl"
@@ -575,10 +594,16 @@ class ExperimentRunner:
                 try:
                     df = read_result_file(detail_file)
                     df = df[df["aucroc"].notna() & (df["aucroc"] > 0)]  # 只考虑有结果且大于0的实验
-                    main_setting = df[main_keys].drop_duplicates().to_numpy().tolist()
+
+                    # 为缺失的列补充默认值
+                    for col in main_keys:
+                        if col not in df.columns:
+                            df[col] = None
+
+                    main_setting = df[main_keys].drop_duplicates().values.tolist()
                     finished_experiments.update([tuple(row) for row in main_setting])
                 except Exception as e:
-                    pass
+                    logger.warning(f"加载已完成实验记录失败 {detail_file}: {e}")
         return finished_experiments
 
     def run_experiments(self):
@@ -617,7 +642,8 @@ class ExperimentRunner:
         finished_experiments = self._load_finish_exp()
         if finished_experiments and not self.NO_RESUME:
             num_before_skip = len(experiment_params)
-            experiment_params = [params for params in experiment_params if params not in finished_experiments]
+            # 比较全部 14 个主键元素
+            experiment_params = [params for params in experiment_params if tuple(params) not in finished_experiments]
             logger.info(f"跳过 {num_before_skip - len(experiment_params)} 个已完成的实验")
 
         if not experiment_params:
@@ -640,7 +666,7 @@ class ExperimentRunner:
         # 准备传递给子进程的实验配置（不包含完整的runner）
         experiment_config = {
             "data_type": self.data_type,
-            "model_params": self.model_params,  # 传递模型参数配置
+            "model_params": self.model_params,
         }
 
         # 为每个任务分配GPU
@@ -1001,7 +1027,7 @@ def run_single_experiment_with_gpu(params_with_config):
             at_least_one_labeled=True,
             shortage_mode="ignore",
             data_type=data_type,
-            exp_note = exp_note
+            exp_note = exp_note,
         )
 
         # 检查数据有效性
@@ -1076,7 +1102,6 @@ def run_single_experiment_with_gpu(params_with_config):
         # 可视化
         if has_param(model.fit, "emb_vis"):
             train_input["emb_vis"] = data.get("emb_vis", None)
-
 
         pred_func = None
         if hasattr(model, "predict_score"):
@@ -1196,7 +1221,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.sum(data["y_test"]),
             "error": "",
             "data_type": data_type,
-            "exp_note": exp_note
+            "exp_note": exp_note,
         }
 
         logger.info(
@@ -1237,7 +1262,7 @@ def run_single_experiment_with_gpu(params_with_config):
             "n_test_anomalies": np.nan,
             "error": str(e).replace("\n", " ").replace(",", " "),
             "data_type": data_type,
-            "exp_note": exp_note
+            "exp_note": exp_note,
         }
 
 
@@ -1266,9 +1291,13 @@ def main():
             "tabular_NLP_by_BERT",
             "tabular_NLP_by_RoBERTa",
             "classical_bags_inexact",
+            "Classical_bags_inexact_prob01",
+            "Classical_bags_inexact_bag10prob02",
+            "Classical_bags_inexact_bag20",
+            "Classical_bags_inexact_bag30",
+            "CV_by_ViT_bags_inexact",
             "tabular_CV_by_ResNet18_OOD",
             "tabular_CV_by_ResNet18_OOD_pic",
-            "CV_by_ViT_bags_inexact"
         ],
         required=True,
         default=["tabular_classical"],
@@ -1458,7 +1487,7 @@ def main():
         gpu_list=gpu_list,
         DEBUG=args.DEBUG,
         NO_RESUME=args.NO_RESUME,
-        exp_note = args.exp_note
+        exp_note = args.exp_note,
     )
 
     # 运行实验

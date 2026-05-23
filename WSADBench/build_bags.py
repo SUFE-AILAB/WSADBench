@@ -213,5 +213,23 @@ if __name__ == '__main__':
     main()
 
 #测试代码，处理classical目录下的文件
-#python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/classical_bags_inexact --bag-size 10 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
+#python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_prob01 --bag-size 10 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
 #python WSADBench/build_bags.py --input-dir WSADBench/datasets/CV_by_ResNet18 --output-dir WSADBench/datasets/CV_by_ResNet18_bags_inexact --bag-size 10 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
+
+# 对照实验1
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_prob01 --bag-size 10 --bag-prob 0.1 --seed 331 --no-resume --gpus 0
+
+# 对照实验2
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_bag20 --bag-size 20 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
+
+# 对照实验3
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_bag30 --bag-size 30 --bag-prob 0.3 --seed 331 --no-resume --gpus 0
+
+# 对照实验4 不用
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_bag20prob01 --bag-size 20 --bag-prob 0.1 --seed 331 --no-resume --gpus 0
+
+# 对照实验5 不用
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_bag30prob01 --bag-size 30 --bag-prob 0.1 --seed 331 --no-resume --gpus 1
+
+# 对照实验6
+# python WSADBench/build_bags.py --input-dir WSADBench/datasets/Classical --output-dir WSADBench/datasets/Classical_bags_inexact_bag10prob02 --bag-size 10 --bag-prob 0.2 --seed 331 --no-resume --gpus 1
