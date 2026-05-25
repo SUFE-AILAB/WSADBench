@@ -42,3 +42,6 @@ combo==0.1.3
 ftfy
 regex
 
+psutil  # Video processing dependency
+decord  # Video processing dependency
+opencv-python==4.10.0.84  # Video processing dependency

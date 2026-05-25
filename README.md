@@ -123,6 +123,74 @@ python WSADBench/datasets/download_dataset.py --datasets Classical
 ```
 
 
+### Optional note: rebuilding video features from raw videos
+
+This is an optional video feature standardization pipeline. It is only needed if you want to
+regenerate clip-level and segment-level video features from the original video
+files instead of using the prepared feature files provided by WSADBench.
+
+First, download the reference source-dataset tree, file structure, and related
+configuration files:
+
+```
+https://www.modelscope.cn/datasets/mac4mac/WSADBench-Datasets/file/view/master/source_datasets.tar.gz?id=176960&status=0
+```
+
+Then download the raw files for the target video dataset and place them under
+the expected directory structure, for example:
+
+```
+WSADBench/datasets/source_datasets
+```
+
+After the raw files are in place, run the streaming video preprocessing script:
+
+```bash
+python -m WSADBench.datasets.dataset_support.video_preprocess_streaming \
+    --config_path /path/to/WSADBench/WSADBench/datasets/dataset_configs/CV_by_I3D/shanghaitech.prep.rgb.yaml \
+    --resume \
+    --max_queue 1 \
+    --memory_limit 0.8 \
+    --segment_len 100
+```
+
+This command converts raw videos into clip-level vector features. Each clip
+contains information from 16 frames.
+
+Command arguments:
+
+- `--config_path ...yaml`: Required path to the preprocessing YAML file. The script reads input directories, output directories, model settings, frame counts, and other preprocessing options from the `PREPROCESS` section.
+- `--resume`: Skips videos that already have generated `.npy` outputs. This is useful for resuming interrupted preprocessing jobs.
+- `--max_queue 1`: Maximum size of the producer-consumer queue. A value of `1` keeps CPU-side buffering small and reduces memory usage, but may slow preprocessing if the GPU has to wait. The default is `10`.
+- `--memory_limit 0.8`: Memory usage threshold from `0.0` to `1.0`. When memory usage exceeds 80%, the CPU side pauses new task submission to avoid running out of memory.
+- `--segment_len 100`: Number of clips in each processing segment. Larger values usually improve throughput but use more memory; smaller values are more stable but may be slower.
+
+Important YAML fields:
+
+- `MODALITY: RGB`: Uses RGB input and controls normalization and output-directory semantics.
+- `INPUT_DIR`: Dataset root directory, used for copying splits, annotations, and other auxiliary files.
+- `RAW_DATA_DIR`: Directory containing the raw videos or frames. The preprocessing script enumerates videos from this location.
+- `OUTPUT_DIR`: Root directory for generated feature files.
+- `MODALITY_SAVE_DIR`: Extra subdirectory under `OUTPUT_DIR`, for example `all_rgbs`, where final `.npy` files are written.
+- `RESIZE: [340, 256]`: Resizes frames to this size before cropping.
+- `CROPS: Ten` and `CROP_SIZE: 224`: Uses TenCrop with crop size 224, producing 10 crop views for each frame.
+- `NUM_FRAMES: 16`: Number of frames in each clip.
+- `NUM_CLIPS: -1`: Extracts all available clips from each full video.
+- `MODEL`: Feature extractor class to import dynamically, such as an MViT-32 feature extractor.
+- `MODEL_BATCH_SIZE: 32`: GPU inference batch size. Increase it when GPU memory allows to improve throughput.
+- `COPY`: Auxiliary files copied to `OUTPUT_DIR` before preprocessing, such as `splits` and `Annotation.txt`.
+- `NUM_CLASSES: 2`: Number of classes, usually normal and abnormal. This is mainly used by downstream stages rather than the streaming preprocessing script itself.
+- `SEGMENTATION`: Usually consumed by later processing stages, not directly by `video_preprocess_streaming.py`.
+
+After clip-level features are generated, pool each video's clip features into a
+fixed number of segments for downstream classification:
+
+```bash
+python WSADBench/datasets/dataset_support/video_pre_segment.py \
+    --config WSADBench/datasets/dataset_configs/CV_by_I3D/shanghaitech.prep.rgb.yaml \
+    --segment_num 32 \
+    --n_jobs 8
+```
 
 
 

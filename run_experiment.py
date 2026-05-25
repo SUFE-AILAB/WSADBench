@@ -1106,58 +1106,128 @@ def run_single_experiment_with_gpu(params_with_config):
 
         model.fit(**train_input)
 
-        fit_time = time.time() - start_time
-        start_time = time.time()
-        proba = pred_func(**test_input)
-        if proba.ndim == 1:
-            scores = proba
-        else:
-            scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+        fit_time = time.time() - start_time  
+ 
+        if data_type == "tabular_CV_by_ResNet18_OOD":  # operate ood_res
+            res_list = []
+            
+            rate_list = [0, 25, 50, 75, 100]  # [0, 25, 50, 75, 100]
+            for rate in rate_list:
+                test_input = {}
+                if has_param(pred_func, "X"):
+                    test_input["X"] = data["X_test_dict"][rate]  # get X_test for each rate
+                if has_param(pred_func, "X_test"):
+                    test_input["X_test"] = data["X_test_dict"][rate]
+                start_time = time.time()
+                proba = pred_func(**test_input)
+                if proba.ndim == 1:
+                    scores = proba
+                else:
+                    scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
 
-        inference_time = time.time() - start_time
-        if data_type == "video":
-            frame_scores, frame_truth = ExperimentRunner._process_video_scores(scores, data_shape, data)
-            metrics = utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
-        elif "inexact" in data_type:
-            sample_scores, sample_truth = ExperimentRunner._process_tabular_scores(scores, data_shape, data)
-            metrics = utils.metric(y_true=sample_truth, y_score=sample_scores, pos_label=1)
-        else:
-            metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
+                inference_time = time.time() - start_time
 
-        result = {
-            "model": model_name,
-            "dataset": dataset_name,
-            "rla": rla,
-            "eln": eln,
-            "ru": ru,
-            "flip_normal_ratio": flip_normal_ratio,
-            "flip_abnormal_ratio": flip_abnormal_ratio,
-            "target_for_unlabeled": target_for_unlabeled,
-            "seed": seed,
-            "aucroc": metrics["aucroc"],
-            "aucpr": metrics["aucpr"],
-            "noise_type": noise_type,
-            "is_cleanlab": is_cleanlab,
-            "fit_time": fit_time,
-            "inference_time": inference_time,
-            "n_train": len(data["y_train"]),
-            "n_test": len(data["y_test"]),
-            "n_train_anomalies": np.sum(data["y_train"]),
-            "n_test_anomalies": np.sum(data["y_test"]),
-            "error": "",
-            "data_type": data_type,
-            "exp_note": exp_note
-        }
 
-        logger.info(
-            f"finish {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}): "
-            f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
-        )
+                metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
 
-        del model, data, scores
-        gc.collect()
+                result = {
+                    "model": model_name,
+                    "dataset": f'{dataset_name}.{rate}',  #
+                    "rla": rla,
+                    "eln": eln,
+                    "ru": ru,
+                    "flip_normal_ratio": flip_normal_ratio,
+                    "flip_abnormal_ratio": flip_abnormal_ratio,
+                    "target_for_unlabeled": target_for_unlabeled,
+                    "seed": seed,
+                    "aucroc": metrics["aucroc"],
+                    "aucpr": metrics["aucpr"],
+                    "noise_type": noise_type,
+                    "fit_time": fit_time,
+                    "inference_time": inference_time,
+                    "n_train": len(data["y_train"]),
+                    "n_test": len(data["y_test"]),
+                    "n_train_anomalies": np.sum(data["y_train"]),
+                    "n_test_anomalies": np.sum(data["y_test"]),
+                    "error": "",
+                    "data_type": data_type,
+                    "exp_note": exp_note,
+                }   
+                res_list.append(result)
+                logger.info(
+                    f"finish {model_name} - {result['dataset']} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type}): \n"
+                    f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
+                )
+            save_path_dir = r'./results/tabular_CV_by_ResNet18_OOD_new_res/detail'
+            os.makedirs(save_path_dir, exist_ok=True)
+            file_folder = os.path.join(save_path_dir, model_name)
+            os.makedirs(file_folder, exist_ok=True)
+            jsonl_path = os.path.join(file_folder, f"{model_name}_results.jsonl")
+            df = pd.DataFrame(res_list) # add 5 res
+            if os.path.exists(jsonl_path):
+                df.to_json(jsonl_path, orient="records", lines=True, mode="a")
+            else:
+                df.to_json(jsonl_path, orient="records", lines=True)
 
-        return result
+            logger.debug(f"save {model_name} ood results to: {jsonl_path}, num of results: {len(res_list)}")
+
+            del model, data, scores
+            gc.collect()
+            result['dataset'] = dataset_name
+            return result
+        else:  # not ood predict
+
+            start_time = time.time()
+            proba = pred_func(**test_input)
+            if proba.ndim == 1:
+                scores = proba
+            else:
+                scores = proba[:, 1] if proba.shape[1] > 1 else proba.flatten()
+
+            inference_time = time.time() - start_time
+            if data_type == "video":
+                frame_scores, frame_truth = ExperimentRunner._process_video_scores(scores, data_shape, data)
+                metrics = utils.metric(y_true=frame_truth, y_score=frame_scores, pos_label=1)
+            elif "inexact" in data_type:
+                sample_scores, sample_truth = ExperimentRunner._process_tabular_scores(scores, data_shape, data)
+                metrics = utils.metric(y_true=sample_truth, y_score=sample_scores, pos_label=1)
+            else:
+                metrics = utils.metric(y_true=data["y_test"], y_score=scores, pos_label=1)
+
+            result = {
+                "model": model_name,
+                "dataset": dataset_name,
+                "rla": rla,
+                "eln": eln,
+                "ru": ru,
+                "flip_normal_ratio": flip_normal_ratio,
+                "flip_abnormal_ratio": flip_abnormal_ratio,
+                "target_for_unlabeled": target_for_unlabeled,
+                "seed": seed,
+                "aucroc": metrics["aucroc"],
+                "aucpr": metrics["aucpr"],
+                "noise_type": noise_type,
+                "is_cleanlab": is_cleanlab,
+                "fit_time": fit_time,
+                "inference_time": inference_time,
+                "n_train": len(data["y_train"]),
+                "n_test": len(data["y_test"]),
+                "n_train_anomalies": np.sum(data["y_train"]),
+                "n_test_anomalies": np.sum(data["y_test"]),
+                "error": "",
+                "data_type": data_type,
+                "exp_note": exp_note
+            }
+
+            logger.info(
+                f"finish {model_name} - {dataset_name} (seed={seed}, rla={rla},eln={eln},ru={ru},flip_normal_ratio={flip_normal_ratio},flip_abnormal_ratio={flip_abnormal_ratio},target_for_unlabeled={target_for_unlabeled},noise_type={noise_type},exp_note={exp_note}): "
+                f"AUCROC={metrics['aucroc']:.4f}, AUCPR={metrics['aucpr']:.4f}"
+            )
+
+            del model, data, scores
+            gc.collect()
+
+            return result
 
     except Exception as e:
         if DEBUG:
