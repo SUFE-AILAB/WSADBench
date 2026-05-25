@@ -612,8 +612,8 @@ If you find this repository or our paper useful in your research, please conside
 
 This project features a mixed licensing model:
 
-- **Software Code**: The code in this repository is licensed under the [MIT License](LICENSE).
-- **Data & Benchmark**: The datasets, benchmark results, and other non-code assets are licensed under the [Creative Commons Attribution 4.0 International (CC-BY 4.0)](https://creativecommons.org/licenses/by/4.0/) License.
+- **Software Code**: The software code in this repository is licensed under the [MIT License](LICENSE).
+- **Data & Benchmark**: The datasets, benchmark results, and other non-code assets are licensed under the [Creative Commons Attribution 4.0 International License (CC-BY 4.0)](LICENSE-DATA).
 
 ---
 
