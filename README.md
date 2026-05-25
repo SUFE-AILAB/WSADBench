@@ -2,9 +2,13 @@
 
 **Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark**
 
+This repository is the official PyTorch implementation of the paper **"Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark"**, which has been accepted by **KDD 2026 Datasets and Benchmarks Track (Cycle 2)**.
+
+[![KDD 2026](https://img.shields.io/badge/KDD-2026-blue.svg)](https://kdd2026.kdd.org/)
 [![Python 3.9](https://img.shields.io/badge/Python-3.9-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-red.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/Code_License-MIT-yellow.svg)](LICENSE)
+[![License: CC BY 4.0](https://img.shields.io/badge/Data_License-CC_BY_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 
 WSADBench is a comprehensive benchmark for weakly-supervised anomaly detection, supporting multiple data modalities including tabular data (classical, CV features, NLP embeddings), video data, and inexact supervision (MIL bags).
 
@@ -586,9 +590,30 @@ results/
 
 
 
+---
+
+## 📝 Citation
+
+If you find this repository or our paper useful in your research, please consider citing:
+
+```bibtex
+@inproceedings{yao2026rethinking,
+  title={Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark},
+  author={Xu Yao and Siyuan Zhou and Wu Zhenbo and Chaochuan Hou and Shuang Liang and Shiping wang and Hailiang Huang and Songqiao Han and Minqi Jiang},
+  booktitle={KDD 2026 Datasets and Benchmarks Track (Cycle 2)},
+  year={2026},
+  doi={10.1145/3770855.3817536}
+}
+```
+
+---
+
 ## ⚖️ License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project features a mixed licensing model:
+
+- **Software Code**: The code in this repository is licensed under the [MIT License](LICENSE).
+- **Data & Benchmark**: The datasets, benchmark results, and other non-code assets are licensed under the [Creative Commons Attribution 4.0 International (CC-BY 4.0)](https://creativecommons.org/licenses/by/4.0/) License.
 
 ---
 
@@ -601,4 +626,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📫 Contact
 
-For questions and issues, please open an issue on GitHub.
+For questions and issues, please open an issue on GitHub. For other inquiries, please refer to the authors' contact emails listed in the paper.
