@@ -45,6 +45,6 @@ preferred-citation:
     - family-names: "Jiang"
       given-names: "Minqi"
   title: "Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark"
-  collection-title: "KDD 2026 Datasets and Benchmarks Track (Cycle 2)"
+  collection-title: "Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining"
   year: 2026
   doi: "10.1145/3770855.3817536"

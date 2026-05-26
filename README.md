@@ -2,7 +2,7 @@
 
 **Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark**
 
-This repository is the official PyTorch implementation of the paper **"Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark"**, which has been accepted by **KDD 2026 Datasets and Benchmarks Track (Cycle 2)**.
+This repository is the official PyTorch implementation of the paper **"Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark"**, which has been accepted by **KDD 2026 Datasets and Benchmarks Track**.
 
 [![KDD 2026](https://img.shields.io/badge/KDD-2026-blue.svg)](https://kdd2026.kdd.org/)
 [![Python 3.9](https://img.shields.io/badge/Python-3.9-blue.svg)](https://www.python.org/downloads/)
@@ -599,8 +599,8 @@ If you find this repository or our paper useful in your research, please conside
 ```bibtex
 @inproceedings{yao2026rethinking,
   title={Rethinking Weak Supervision in Anomaly Detection: A Comprehensive Benchmark},
-  author={Xu Yao and Siyuan Zhou and Wu Zhenbo and Chaochuan Hou and Shuang Liang and Shiping wang and Hailiang Huang and Songqiao Han and Minqi Jiang},
-  booktitle={KDD 2026 Datasets and Benchmarks Track (Cycle 2)},
+  author={Xu Yao and Siyuan Zhou and Zhenbo Wu and Chaochuan Hou and Shuang Liang and Shiping Wang and Hailiang Huang and Songqiao Han and Minqi Jiang},
+  booktitle={Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
   year={2026},
   doi={10.1145/3770855.3817536}
 }
